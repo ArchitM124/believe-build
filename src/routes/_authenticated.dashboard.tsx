@@ -1,67 +1,81 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Upload, Film, Clock, CheckCircle2, AlertCircle, Loader2, Plus, ArrowRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Upload, Film, CheckCircle2, AlertCircle, Loader2, Plus, ArrowRight, Flag,
+} from "lucide-react";
 import { toast } from "sonner";
-import { analyzeGame } from "@/lib/analyze-game.functions";
+import { analyzePossession } from "@/lib/analyze-possession.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({ meta: [{ title: "Games — PlayIQ" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Possessions — PlayIQ" }, { name: "robots", content: "noindex" }] }),
   component: Dashboard,
 });
 
-type Game = {
+type Possession = {
   id: string;
-  title: string;
-  opponent: string | null;
-  game_date: string | null;
-  camera_angle: string;
+  title: string | null;
+  notes: string | null;
+  uploader_role: "coach" | "player";
   status: "uploading" | "processing" | "ready" | "failed";
   error: string | null;
-  created_at: string;
+  outcome: string;
+  what_happened: string | null;
+  confidence: "low" | "medium" | "high";
+  flagged: boolean;
   duration_seconds: number | null;
+  created_at: string;
+};
+
+const OUTCOME_LABEL: Record<string, string> = {
+  made_shot: "Made shot", missed_shot: "Missed shot", turnover: "Turnover",
+  defensive_stop: "D stop", defensive_breakdown: "D breakdown", foul: "Foul", other: "Other",
 };
 
 function Dashboard() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  const { data: games, isLoading } = useQuery({
-    queryKey: ["games"],
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["possessions"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("games")
-        .select("*")
+        .from("plays")
+        .select("id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,created_at")
+        .not("user_id", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Game[];
+      return (data ?? []) as Possession[];
     },
     refetchInterval: (q) => {
-      const rows = (q.state.data as Game[] | undefined) ?? [];
-      return rows.some((g) => g.status === "processing" || g.status === "uploading") ? 3000 : false;
+      const list = (q.state.data as Possession[] | undefined) ?? [];
+      return list.some((p) => p.status === "processing" || p.status === "uploading") ? 3000 : false;
     },
   });
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-primary">Film room</div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your games</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your possessions</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user?.email}. Upload film, watch the AI break it down.
+            Signed in as {user?.email}. Upload one possession at a time — coach or player.
           </p>
         </div>
-        <UploadDialog onDone={() => qc.invalidateQueries({ queryKey: ["games"] })} />
+        <UploadDialog onDone={() => qc.invalidateQueries({ queryKey: ["possessions"] })} />
       </div>
 
       <div className="mt-8">
@@ -69,11 +83,11 @@ function Dashboard() {
           <div className="grid place-items-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
-        ) : !games?.length ? (
-          <EmptyState onDone={() => qc.invalidateQueries({ queryKey: ["games"] })} />
+        ) : !rows?.length ? (
+          <EmptyState onDone={() => qc.invalidateQueries({ queryKey: ["possessions"] })} />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {games.map((g) => <GameCard key={g.id} game={g} />)}
+            {rows.map((p) => <PossessionCard key={p.id} p={p} />)}
           </div>
         )}
       </div>
@@ -81,7 +95,7 @@ function Dashboard() {
   );
 }
 
-function StatusPill({ status }: { status: Game["status"] }) {
+function StatusPill({ status }: { status: Possession["status"] }) {
   const map = {
     uploading: { icon: Upload, label: "Uploading", color: "text-muted-foreground" },
     processing: { icon: Loader2, label: "Analyzing", color: "text-[color:var(--warn)]", spin: true },
@@ -98,29 +112,45 @@ function StatusPill({ status }: { status: Game["status"] }) {
   );
 }
 
-function GameCard({ game }: { game: Game }) {
+function PossessionCard({ p }: { p: Possession }) {
   return (
     <Link
-      to="/games/$gameId"
-      params={{ gameId: game.id }}
+      to="/possessions/$id"
+      params={{ id: p.id }}
       className="group block rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/60"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-lg font-semibold">{game.title}</h3>
+          <h3 className="truncate text-lg font-semibold">{p.title ?? "Untitled possession"}</h3>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {game.opponent ? `vs ${game.opponent}` : "No opponent"}
-            {game.game_date ? ` · ${new Date(game.game_date).toLocaleDateString()}` : ""}
+            {new Date(p.created_at).toLocaleString()}
           </p>
         </div>
         <Film className="h-5 w-5 shrink-0 text-primary/70" />
       </div>
-      <div className="mt-6 flex items-center justify-between">
-        <StatusPill status={game.status} />
+
+      {p.status === "ready" && p.what_happened && (
+        <p className="mt-3 line-clamp-2 text-xs text-foreground/80">{p.what_happened}</p>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        <Badge variant="secondary" className="text-[10px] uppercase">{p.uploader_role}</Badge>
+        {p.status === "ready" && (
+          <Badge variant="outline" className="text-[10px] uppercase">{OUTCOME_LABEL[p.outcome] ?? p.outcome}</Badge>
+        )}
+        {p.flagged && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-primary">
+            <Flag className="h-3 w-3" /> flagged
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <StatusPill status={p.status} />
         <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
       </div>
-      {game.error && (
-        <p className="mt-3 line-clamp-2 text-xs text-[color:var(--bad)]">{game.error}</p>
+      {p.error && (
+        <p className="mt-3 line-clamp-2 text-xs text-[color:var(--bad)]">{p.error}</p>
       )}
     </Link>
   );
@@ -130,8 +160,8 @@ function EmptyState({ onDone }: { onDone: () => void }) {
   return (
     <div className="rounded-xl border border-dashed border-border p-12 text-center court-grid">
       <Film className="mx-auto h-10 w-10 text-primary" />
-      <h3 className="mt-4 text-xl font-semibold">No games yet</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Upload your first game film to start.</p>
+      <h3 className="mt-4 text-xl font-semibold">No possessions yet</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Upload one clip — the AI breaks it down for you.</p>
       <div className="mt-6">
         <UploadDialog onDone={onDone} />
       </div>
@@ -151,7 +181,7 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     if (!file) return toast.error("Pick a video file");
-    if (file.size > 2 * 1024 * 1024 * 1024) return toast.error("File exceeds 2GB (MVP limit)");
+    if (file.size > 500 * 1024 * 1024) return toast.error("Clip exceeds 500MB — trim it first");
 
     const { data: userRes } = await supabase.auth.getUser();
     const uid = userRes.user?.id;
@@ -160,52 +190,48 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setProgress(5);
 
-    // Insert game row first
-    const { data: game, error: gErr } = await supabase
-      .from("games")
+    let duration: number | null = null;
+    try { duration = await readDuration(file); } catch { /* ignore */ }
+
+    // Insert possession row first
+    const { data: play, error: pErr } = await supabase
+      .from("plays")
       .insert({
         user_id: uid,
-        title: String(fd.get("title")),
-        opponent: (fd.get("opponent") as string) || null,
-        game_date: (fd.get("game_date") as string) || null,
-        camera_angle: (fd.get("camera_angle") as "sideline" | "baseline" | "elevated" | "other") || "sideline",
+        title: String(fd.get("title") || "Untitled possession"),
+        notes: (fd.get("notes") as string) || null,
+        uploader_role: (fd.get("uploader_role") as "coach" | "player") || "coach",
+        duration_seconds: duration,
         status: "uploading",
       })
       .select()
       .single();
-    if (gErr || !game) { setBusy(false); return toast.error(gErr?.message ?? "Failed to create game"); }
+    if (pErr || !play) { setBusy(false); return toast.error(pErr?.message ?? "Failed to create possession"); }
 
-    const path = `${uid}/${game.id}/${file.name}`;
-    setProgress(15);
+    const path = `${uid}/possessions/${play.id}/${file.name}`;
+    setProgress(20);
     const { error: upErr } = await supabase.storage.from("game-videos").upload(path, file, {
       cacheControl: "3600",
       upsert: false,
       contentType: file.type || "video/mp4",
     });
     if (upErr) {
-      await supabase.from("games").update({ status: "failed", error: upErr.message }).eq("id", game.id);
+      await supabase.from("plays").update({ status: "failed", error: upErr.message }).eq("id", play.id);
       setBusy(false);
       return toast.error(upErr.message);
     }
 
-    // Try to read duration client-side (best effort)
-    let duration: number | null = null;
-    try {
-      duration = await readDuration(file);
-    } catch { /* ignore */ }
-
     setProgress(70);
-    await supabase.from("games").update({ video_path: path, duration_seconds: duration }).eq("id", game.id);
+    await supabase.from("plays").update({ video_path: path }).eq("id", play.id);
 
-    // Kick off analysis
     setProgress(85);
     try {
-      await analyzeGame({ data: { gameId: game.id } });
+      await analyzePossession({ data: { possessionId: play.id } });
       setProgress(100);
-      toast.success("Analysis complete");
+      toast.success("Breakdown ready");
       onDone();
       setOpen(false);
-      navigate({ to: "/games/$gameId", params: { gameId: game.id } });
+      navigate({ to: "/possessions/$id", params: { id: play.id } });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Analysis failed");
       onDone();
@@ -218,21 +244,21 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2"><Plus className="h-4 w-4" /> New game</Button>
+        <Button className="gap-2"><Plus className="h-4 w-4" /> Upload possession</Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload a new game</DialogTitle>
+          <DialogTitle>Upload a possession</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Video file (MP4 / MOV, up to 2GB)</Label>
+            <Label>Clip (MP4 / MOV, up to 500MB)</Label>
             <div
               onClick={() => inputRef.current?.click()}
               className="cursor-pointer rounded-md border border-dashed border-border bg-muted/30 p-6 text-center hover:border-primary/60"
             >
               <Upload className="mx-auto h-6 w-6 text-primary" />
-              <p className="mt-2 text-sm">{file ? file.name : "Click to select a video"}</p>
+              <p className="mt-2 text-sm">{file ? file.name : "Click to select a clip"}</p>
               {file && <p className="mt-1 text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
             </div>
             <input
@@ -246,28 +272,27 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="title">Game title</Label>
-              <Input id="title" name="title" placeholder="Varsity vs Central — Jan 15" required />
+              <Label htmlFor="title">Title</Label>
+              <Input id="title" name="title" placeholder="Q3 · pick-and-roll switch" required />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="opponent">Opponent</Label>
-              <Input id="opponent" name="opponent" placeholder="Optional" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="game_date">Game date</Label>
-              <Input id="game_date" name="game_date" type="date" />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Camera angle</Label>
-              <Select name="camera_angle" defaultValue="sideline">
+              <Label>I am a…</Label>
+              <Select name="uploader_role" defaultValue="coach">
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sideline">Sideline (recommended)</SelectItem>
-                  <SelectItem value="elevated">Elevated / press box</SelectItem>
-                  <SelectItem value="baseline">Baseline</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="coach">Coach</SelectItem>
+                  <SelectItem value="player">Player</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="notes">Notes for the AI (optional)</Label>
+              <Textarea
+                id="notes"
+                name="notes"
+                rows={3}
+                placeholder="Context helps: what was the set, what read did you want, what happened?"
+              />
             </div>
           </div>
 
@@ -275,7 +300,7 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             <div className="space-y-1">
               <Progress value={progress} />
               <p className="text-xs text-muted-foreground">
-                {progress < 70 ? "Uploading video…" : progress < 100 ? "Running AI film analysis…" : "Done"}
+                {progress < 70 ? "Uploading clip…" : progress < 100 ? "Running AI breakdown…" : "Done"}
               </p>
             </div>
           )}
