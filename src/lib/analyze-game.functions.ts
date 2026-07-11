@@ -107,19 +107,25 @@ Return ONLY valid JSON matching this exact TypeScript type — no prose, no mark
     // Clear old plays for idempotency, then insert
     await supabase.from("plays").delete().eq("game_id", game.id);
 
-    const rows = parsed.possessions.slice(0, 40).map((p, i) => ({
-      game_id: game.id,
-      possession_index: Number(p.possession_index ?? i + 1),
-      start_seconds: Number(p.start_seconds ?? i * 20),
-      end_seconds: Number(p.end_seconds ?? i * 20 + 18),
-      outcome: (p.outcome as string) || "other",
-      what_happened: String(p.what_happened ?? ""),
-      what_went_right: p.what_went_right ? String(p.what_went_right) : null,
-      what_went_wrong: p.what_went_wrong ? String(p.what_went_wrong) : null,
-      alternative: p.alternative ? String(p.alternative) : null,
-      confidence: (p.confidence as string) || "low",
-      flagged: Boolean(p.flagged),
-    }));
+    const outcomes = new Set(["made_shot","missed_shot","turnover","defensive_stop","defensive_breakdown","foul","other"]);
+    const confs = new Set(["low","medium","high"]);
+    const rows = parsed.possessions.slice(0, 40).map((p, i) => {
+      const rawOut = String(p.outcome ?? "other");
+      const rawConf = String(p.confidence ?? "low");
+      return {
+        game_id: game.id,
+        possession_index: Number(p.possession_index ?? i + 1),
+        start_seconds: Number(p.start_seconds ?? i * 20),
+        end_seconds: Number(p.end_seconds ?? i * 20 + 18),
+        outcome: (outcomes.has(rawOut) ? rawOut : "other") as "made_shot"|"missed_shot"|"turnover"|"defensive_stop"|"defensive_breakdown"|"foul"|"other",
+        what_happened: String(p.what_happened ?? ""),
+        what_went_right: p.what_went_right ? String(p.what_went_right) : null,
+        what_went_wrong: p.what_went_wrong ? String(p.what_went_wrong) : null,
+        alternative: p.alternative ? String(p.alternative) : null,
+        confidence: (confs.has(rawConf) ? rawConf : "low") as "low"|"medium"|"high",
+        flagged: Boolean(p.flagged),
+      };
+    });
 
     const { error: insErr } = await supabase.from("plays").insert(rows);
     if (insErr) {
