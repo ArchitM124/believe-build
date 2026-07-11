@@ -14,7 +14,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
-import { Route as AuthenticatedGamesGameIdRouteImport } from './routes/_authenticated.games.$gameId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -40,26 +39,18 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedGamesGameIdRoute =
-  AuthenticatedGamesGameIdRouteImport.update({
-    id: '/games/$gameId',
-    path: '/games/$gameId',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/games/$gameId': typeof AuthenticatedGamesGameIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/games/$gameId': typeof AuthenticatedGamesGameIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,13 +59,12 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/_authenticated/games/$gameId': typeof AuthenticatedGamesGameIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/share/$shareId' | '/games/$gameId'
+  fullPaths: '/' | '/auth' | '/dashboard' | '/share/$shareId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/share/$shareId' | '/games/$gameId'
+  to: '/' | '/auth' | '/dashboard' | '/share/$shareId'
   id:
     | '__root__'
     | '/'
@@ -82,7 +72,6 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/share/$shareId'
-    | '/_authenticated/games/$gameId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,24 +118,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/games/$gameId': {
-      id: '/_authenticated/games/$gameId'
-      path: '/games/$gameId'
-      fullPath: '/games/$gameId'
-      preLoaderRoute: typeof AuthenticatedGamesGameIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
   }
 }
 
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedGamesGameIdRoute: typeof AuthenticatedGamesGameIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedGamesGameIdRoute: AuthenticatedGamesGameIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
