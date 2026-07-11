@@ -67,15 +67,24 @@ export type Database = {
           alternative: string | null
           confidence: Database["public"]["Enums"]["confidence_level"]
           created_at: string
-          end_seconds: number
+          duration_seconds: number | null
+          end_seconds: number | null
+          error: string | null
           flagged: boolean
-          game_id: string
+          game_id: string | null
           id: string
+          notes: string | null
           outcome: Database["public"]["Enums"]["play_outcome"]
-          possession_index: number
+          possession_index: number | null
           share_id: string
-          start_seconds: number
-          what_happened: string
+          start_seconds: number | null
+          status: Database["public"]["Enums"]["possession_status"]
+          title: string | null
+          updated_at: string
+          uploader_role: Database["public"]["Enums"]["uploader_role"]
+          user_id: string | null
+          video_path: string | null
+          what_happened: string | null
           what_went_right: string | null
           what_went_wrong: string | null
         }
@@ -83,15 +92,24 @@ export type Database = {
           alternative?: string | null
           confidence?: Database["public"]["Enums"]["confidence_level"]
           created_at?: string
-          end_seconds: number
+          duration_seconds?: number | null
+          end_seconds?: number | null
+          error?: string | null
           flagged?: boolean
-          game_id: string
+          game_id?: string | null
           id?: string
+          notes?: string | null
           outcome?: Database["public"]["Enums"]["play_outcome"]
-          possession_index: number
+          possession_index?: number | null
           share_id?: string
-          start_seconds: number
-          what_happened: string
+          start_seconds?: number | null
+          status?: Database["public"]["Enums"]["possession_status"]
+          title?: string | null
+          updated_at?: string
+          uploader_role?: Database["public"]["Enums"]["uploader_role"]
+          user_id?: string | null
+          video_path?: string | null
+          what_happened?: string | null
           what_went_right?: string | null
           what_went_wrong?: string | null
         }
@@ -99,15 +117,24 @@ export type Database = {
           alternative?: string | null
           confidence?: Database["public"]["Enums"]["confidence_level"]
           created_at?: string
-          end_seconds?: number
+          duration_seconds?: number | null
+          end_seconds?: number | null
+          error?: string | null
           flagged?: boolean
-          game_id?: string
+          game_id?: string | null
           id?: string
+          notes?: string | null
           outcome?: Database["public"]["Enums"]["play_outcome"]
-          possession_index?: number
+          possession_index?: number | null
           share_id?: string
-          start_seconds?: number
-          what_happened?: string
+          start_seconds?: number | null
+          status?: Database["public"]["Enums"]["possession_status"]
+          title?: string | null
+          updated_at?: string
+          uploader_role?: Database["public"]["Enums"]["uploader_role"]
+          user_id?: string | null
+          video_path?: string | null
+          what_happened?: string | null
           what_went_right?: string | null
           what_went_wrong?: string | null
         }
@@ -161,6 +188,8 @@ export type Database = {
         | "defensive_breakdown"
         | "foul"
         | "other"
+      possession_status: "uploading" | "processing" | "ready" | "failed"
+      uploader_role: "coach" | "player"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -300,6 +329,8 @@ export const Constants = {
         "foul",
         "other",
       ],
+      possession_status: ["uploading", "processing", "ready", "failed"],
+      uploader_role: ["coach", "player"],
     },
   },
 } as const
