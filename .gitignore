@@ -21,6 +21,11 @@ dist-ssr
 .env.*
 !.env.example
 
+# Eval harness — keep footage and answer keys local
+eval/clips/
+eval/cases.json
+eval/results.json
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

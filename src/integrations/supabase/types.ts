@@ -17,6 +17,7 @@ export type Database = {
       plays: {
         Row: {
           alternative: string | null
+          attack_direction: string | null
           confidence: Database["public"]["Enums"]["confidence_level"]
           created_at: string
           duration_seconds: number | null
@@ -30,6 +31,7 @@ export type Database = {
           share_id: string
           start_seconds: number | null
           status: Database["public"]["Enums"]["possession_status"]
+          team_color: string | null
           title: string | null
           updated_at: string
           uploader_role: Database["public"]["Enums"]["uploader_role"]
@@ -41,6 +43,7 @@ export type Database = {
         }
         Insert: {
           alternative?: string | null
+          attack_direction?: string | null
           confidence?: Database["public"]["Enums"]["confidence_level"]
           created_at?: string
           duration_seconds?: number | null
@@ -54,6 +57,7 @@ export type Database = {
           share_id?: string
           start_seconds?: number | null
           status?: Database["public"]["Enums"]["possession_status"]
+          team_color?: string | null
           title?: string | null
           updated_at?: string
           uploader_role?: Database["public"]["Enums"]["uploader_role"]
@@ -65,6 +69,7 @@ export type Database = {
         }
         Update: {
           alternative?: string | null
+          attack_direction?: string | null
           confidence?: Database["public"]["Enums"]["confidence_level"]
           created_at?: string
           duration_seconds?: number | null
@@ -78,6 +83,7 @@ export type Database = {
           share_id?: string
           start_seconds?: number | null
           status?: Database["public"]["Enums"]["possession_status"]
+          team_color?: string | null
           title?: string | null
           updated_at?: string
           uploader_role?: Database["public"]["Enums"]["uploader_role"]

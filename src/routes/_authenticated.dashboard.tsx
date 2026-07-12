@@ -233,6 +233,8 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
         title: String(fd.get("title") || "Untitled possession"),
         notes: (fd.get("notes") as string) || null,
         uploader_role: (fd.get("uploader_role") as "coach" | "player") || "coach",
+        team_color: (fd.get("team_color") as string)?.trim() || null,
+        attack_direction: (fd.get("attack_direction") as string) || "unclear",
         duration_seconds: duration,
         status: "uploading",
       })
@@ -325,6 +327,21 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
                 <SelectContent>
                   <SelectItem value="coach">Coach</SelectItem>
                   <SelectItem value="player">Player</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="team_color">Your team's jersey color</Label>
+              <Input id="team_color" name="team_color" placeholder="e.g. white, navy, red" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Attacking which basket?</Label>
+              <Select name="attack_direction" defaultValue="unclear">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="left">Left side</SelectItem>
+                  <SelectItem value="right">Right side</SelectItem>
+                  <SelectItem value="unclear">Not sure</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "clip-1",
+    "video": "clips/clip-1.mp4",
+    "role": "coach",
+    "title": "Q3 high ball screen",
+    "notes": "We wanted the roll, not the pull-up.",
+    "team_color": "white",
+    "attack_direction": "right",
+    "truth": "Turnover — white ball-handler used the ball screen, then threw a lazy cross-court pass that the weak-side defender picked off.",
+    "expected_outcome": "turnover"
+  },
+  {
+    "id": "clip-2",
+    "video": "clips/clip-2.mov",
+    "role": "player",
+    "team_color": "navy",
+    "attack_direction": "left",
+    "truth": "Made shot — navy guard came off a pindown and hit a catch-and-shoot three from the left wing.",
+    "expected_outcome": "made_shot"
+  }
+]
