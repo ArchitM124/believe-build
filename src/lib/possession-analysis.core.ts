@@ -85,19 +85,30 @@ async function callGateway(
   messages: GatewayMessage[],
   temperature: number,
 ): Promise<string> {
-  const res = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature,
-      messages,
-      response_format: { type: "json_object" },
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature,
+        messages,
+        response_format: { type: "json_object" },
+      }),
+      // Bound each call so a hung request can't outlive the serverless
+      // wall-clock and leave the row stuck 'processing' forever.
+      signal: AbortSignal.timeout(90_000),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      throw new Error("AI timed out on this clip — try trimming it to a shorter possession");
+    }
+    throw e;
+  }
 
   if (res.status === 429) throw new Error("Rate limit reached — try again in a minute");
   if (res.status === 402) throw new Error("AI credits exhausted — top up Lovable AI to continue");
@@ -256,15 +267,18 @@ export function normalizeAnalysis(
 ): AnalysisResult {
   const rawOutcome = String(judged.outcome ?? "other") as Outcome;
   const rawConf = String(judged.confidence ?? "low") as Confidence;
+  const readable = observation.readable !== false;
   return {
     outcome: OUTCOMES.has(rawOutcome) ? rawOutcome : "other",
-    confidence: CONFIDENCES.has(rawConf) ? rawConf : "low",
+    // A clip the observer flagged unreadable can never be "high"/"medium"
+    // confidence, no matter how assertive the judge pass sounded.
+    confidence: !readable ? "low" : CONFIDENCES.has(rawConf) ? rawConf : "low",
     what_happened: String(judged.what_happened ?? "").slice(0, 2000),
     what_went_right: judged.what_went_right ? String(judged.what_went_right).slice(0, 2000) : "",
     what_went_wrong: judged.what_went_wrong ? String(judged.what_went_wrong).slice(0, 2000) : "",
     alternative: judged.alternative ? String(judged.alternative).slice(0, 2000) : "",
     flagged: Boolean(judged.flagged),
-    readable: observation.readable !== false,
+    readable,
     observations: normalizeObservations(observation.observations),
   };
 }

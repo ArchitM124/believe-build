@@ -2,10 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { runPossessionAnalysis } from "@/lib/possession-analysis.core";
+import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
 const InputSchema = z.object({ possessionId: z.string().uuid() });
 
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20 MB inline cap for Gemini
+// Gemini caps the TOTAL inline request at 20 MB, and base64 inflates the raw
+// bytes by ~33%. Gate raw bytes at 14 MB so the encoded payload (~18.7 MB plus
+// prompt) stays safely under that ceiling.
+const MAX_VIDEO_BYTES = 14 * 1024 * 1024;
 
 /**
  * Analyze a single possession clip. The heavy lifting — a two-pass
@@ -28,6 +32,18 @@ export const analyzePossession = createServerFn({ method: "POST" })
 
     if (pErr || !play) throw new Error("Possession not found");
     if (!play.video_path) throw new Error("No video attached to this possession");
+
+    // Concurrency guard: if this possession is already being analyzed and was
+    // touched more recently than the stale window, another run owns it — don't
+    // start a duplicate (would double-spend AI credits and let a slow/failed
+    // duplicate overwrite a good result). A genuinely stuck run (updated_at
+    // older than the window) is allowed to be taken over.
+    if (
+      play.status === "processing" &&
+      Date.now() - new Date(play.updated_at).getTime() < STALE_AFTER_MS
+    ) {
+      return { ok: true, skipped: true };
+    }
 
     await supabase.from("plays").update({ status: "processing", error: null }).eq("id", play.id);
 

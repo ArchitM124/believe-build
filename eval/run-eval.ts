@@ -71,7 +71,11 @@ type Case = {
   expected_outcome?: string; // one of the outcome enums, for scoring
 };
 
-const GEMINI_MODEL = "gemini-2.5-pro";
+// Production uses gemini-2.5-pro. Override with GEMINI_MODEL (e.g.
+// gemini-2.5-flash, which is on Google's free tier) for a no-cost run.
+function geminiModel(): string {
+  return process.env.GEMINI_MODEL || "gemini-2.5-pro";
+}
 
 /**
  * Gemini-direct fallback: runs the SAME two-pass prompts as production
@@ -90,26 +94,37 @@ async function callGeminiJson(
   if (inlineVideo) {
     parts.push({ inline_data: { mime_type: inlineVideo.mimeType, data: inlineVideo.base64 } });
   }
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel()}:generateContent?key=${apiKey}`;
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemText }] },
+    contents: [{ role: "user", parts }],
+    generationConfig: { temperature, responseMimeType: "application/json" },
+  });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  let lastErr = "";
+  // Retry transient errors (fresh-project API-enablement propagation, rate limits).
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemText }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: { temperature, responseMimeType: "application/json" },
-      }),
-    },
-  );
-  if (!res.ok) {
+      body,
+    });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    }
     const errText = await res.text().catch(() => "");
-    throw new Error(`Gemini error ${res.status}: ${errText.slice(0, 200)}`);
+    lastErr = `Gemini error ${res.status}: ${errText.slice(0, 160)}`;
+    if ([403, 429, 500, 503].includes(res.status) && attempt < 5) {
+      await sleep(attempt * 8000); // 8s, 16s, 24s, 32s
+      continue;
+    }
+    throw new Error(lastErr);
   }
-  const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  throw new Error(lastErr);
 }
 
 async function runViaGemini(params: {
@@ -142,7 +157,11 @@ async function main() {
   loadLocalEnv();
   const lovableKey = process.env.LOVABLE_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  const provider: "lovable" | "gemini" | null = lovableKey ? "lovable" : geminiKey ? "gemini" : null;
+  const provider: "lovable" | "gemini" | null = lovableKey
+    ? "lovable"
+    : geminiKey
+      ? "gemini"
+      : null;
   if (!provider) {
     console.error(
       "No API key found. Put ONE of these in eval/.env:\n" +
@@ -151,7 +170,7 @@ async function main() {
     );
     process.exit(1);
   }
-  console.log(`Provider: ${provider}\n`);
+  console.log(`Provider: ${provider}${provider === "gemini" ? ` (${geminiModel()})` : ""}\n`);
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {

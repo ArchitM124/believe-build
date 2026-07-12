@@ -76,6 +76,12 @@ test("normalizeAnalysis treats readable:false as unreadable, else readable", () 
   expect(normalizeAnalysis({}, {}).readable).toBe(true);
 });
 
+test("normalizeAnalysis forces low confidence when the clip is unreadable", () => {
+  // Even if the judge pass sounds certain, an unreadable clip can't be trusted.
+  const r = normalizeAnalysis({ readable: false }, { outcome: "made_shot", confidence: "high" });
+  expect(r.confidence).toBe("low");
+});
+
 test("normalizeAnalysis caps long text fields at 2000 chars", () => {
   const long = "a".repeat(5000);
   const r = normalizeAnalysis({}, { outcome: "made_shot", what_happened: long });

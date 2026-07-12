@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzePossession } from "@/lib/analyze-possession.functions";
+import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -94,28 +95,36 @@ function Dashboard() {
     },
   });
 
-  // Self-heal: if a clip has been stuck mid-analysis for over 2 minutes (e.g.
-  // the uploader closed the tab before the background analysis finished),
-  // restart it. analyzePossession is safe to re-run — it just overwrites.
-  const resumedRef = useRef<Set<string>>(new Set());
+  // Self-heal for clips that have been stuck long enough to be genuinely
+  // abandoned (STALE_AFTER_MS comfortably exceeds a real analysis, so a healthy
+  // in-progress run is never touched — the server also guards against dupes).
+  const handledRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!rows) return;
-    const STALL_MS = 120_000;
     const now = Date.now();
     for (const p of rows) {
-      const stalled =
-        (p.status === "processing" || p.status === "uploading") &&
-        p.video_path != null &&
-        now - new Date(p.updated_at).getTime() > STALL_MS &&
-        !resumedRef.current.has(p.id);
-      if (!stalled) continue;
-      resumedRef.current.add(p.id);
-      void analyzePossession({ data: { possessionId: p.id } })
-        .then(() => qc.invalidateQueries({ queryKey: ["possessions"] }))
-        .catch(() => {
-          // The server function marks the row failed on errors it can see.
-          resumedRef.current.delete(p.id); // allow a later retry
-        });
+      if (handledRef.current.has(p.id)) continue;
+      const ageMs = now - new Date(p.updated_at).getTime();
+      if (ageMs <= STALE_AFTER_MS) continue;
+
+      if ((p.status === "processing" || p.status === "uploading") && p.video_path != null) {
+        // Stuck mid-analysis (tab closed before it finished): restart it.
+        handledRef.current.add(p.id);
+        void analyzePossession({ data: { possessionId: p.id } })
+          .then(() => qc.invalidateQueries({ queryKey: ["possessions"] }))
+          .catch(() => {
+            handledRef.current.delete(p.id); // allow a later retry
+          });
+      } else if (p.status === "uploading" && p.video_path == null) {
+        // Upload never attached a video — unrecoverable. Fail it so it stops
+        // polling forever instead of a perpetual "Uploading" pill.
+        handledRef.current.add(p.id);
+        void supabase
+          .from("plays")
+          .update({ status: "failed", error: "Upload did not complete" })
+          .eq("id", p.id)
+          .then(() => qc.invalidateQueries({ queryKey: ["possessions"] }));
+      }
     }
   }, [rows, qc]);
 
@@ -247,10 +256,10 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     const fd = new FormData(e.currentTarget);
     if (!file) return toast.error("Pick a video file");
     // Must match MAX_VIDEO_BYTES in analyze-possession.functions.ts — the model
-    // takes the clip inline, so anything larger is rejected before analysis.
-    if (file.size > 20 * 1024 * 1024)
+    // takes the clip inline (base64 adds ~33%), so anything larger is rejected.
+    if (file.size > 14 * 1024 * 1024)
       return toast.error(
-        "Clip exceeds 20MB. Trim to a single possession (≈≤15s at 1080p, ≤30s at 720p).",
+        "Clip exceeds 14MB. Trim to a single possession (≈≤12s at 1080p, ≤25s at 720p).",
       );
 
     const { data: userRes } = await supabase.auth.getUser();
@@ -304,7 +313,21 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     }
 
     setProgress(70);
-    await supabase.from("plays").update({ video_path: path }).eq("id", play.id);
+    const { error: vpErr } = await supabase
+      .from("plays")
+      .update({ video_path: path })
+      .eq("id", play.id);
+    if (vpErr) {
+      // The file uploaded but we couldn't record its path — mark failed so the
+      // clip isn't orphaned as a permanently unrecoverable row.
+      await supabase
+        .from("plays")
+        .update({ status: "failed", error: vpErr.message })
+        .eq("id", play.id);
+      setBusy(false);
+      onDone();
+      return toast.error(vpErr.message);
+    }
 
     // Upload is done — hand the user straight to the possession page. Analysis
     // runs in the background; the dashboard and detail views poll on `status`,

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzePossession } from "@/lib/analyze-possession.functions";
+import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
 export const Route = createFileRoute("/_authenticated/possessions/$id")({
   head: () => ({
@@ -83,15 +84,16 @@ function PossessionDetail() {
       });
   }, [play?.video_path]);
 
-  // Self-heal: if analysis stalled (tab closed before it finished), restart it
-  // once the clip has been stuck for over 2 minutes. Safe to re-run.
+  // Self-heal: restart analysis only once it's been stuck long enough to be
+  // genuinely abandoned (STALE_AFTER_MS exceeds a real run, so a healthy
+  // in-progress job is never duplicated; the server also guards against dupes).
   const resumedRef = useRef(false);
   useEffect(() => {
     if (!play || resumedRef.current) return;
     const stalled =
       (play.status === "processing" || play.status === "uploading") &&
       play.video_path != null &&
-      Date.now() - new Date(play.updated_at).getTime() > 120_000;
+      Date.now() - new Date(play.updated_at).getTime() > STALE_AFTER_MS;
     if (!stalled) return;
     resumedRef.current = true;
     void analyzePossession({ data: { possessionId: play.id } })
@@ -182,11 +184,20 @@ function PossessionDetail() {
       <div className="mt-6 overflow-hidden rounded-xl border border-border bg-black/60">
         {videoUrl ? (
           <video src={videoUrl} controls className="aspect-video w-full" />
-        ) : (
+        ) : play.video_path ? (
           <div className="aspect-video grid place-items-center court-grid">
             <div className="text-center">
               <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
               <p className="mt-2 text-xs text-muted-foreground">Loading clip…</p>
+            </div>
+          </div>
+        ) : (
+          <div className="aspect-video grid place-items-center court-grid">
+            <div className="text-center">
+              <AlertCircle className="mx-auto h-6 w-6 text-muted-foreground" />
+              <p className="mt-2 text-xs text-muted-foreground">
+                No clip attached to this possession.
+              </p>
             </div>
           </div>
         )}
