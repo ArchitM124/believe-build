@@ -174,7 +174,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_shared_possession: {
+        Args: { p_share_id: string }
+        Returns: {
+          id: string
+          title: string | null
+          outcome: Database["public"]["Enums"]["play_outcome"]
+          what_happened: string | null
+          what_went_right: string | null
+          what_went_wrong: string | null
+          alternative: string | null
+          confidence: Database["public"]["Enums"]["confidence_level"]
+          share_id: string
+          duration_seconds: number | null
+        }[]
+      }
     }
     Enums: {
       camera_angle: "sideline" | "baseline" | "elevated" | "other"

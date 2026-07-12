@@ -8,7 +8,7 @@ const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20 MB inline cap for Gemini
 
 /**
  * Analyze a single possession clip by sending the actual video pixels to
- * Gemini 2.5 Flash (multimodal). The uploader's notes/title are provided as
+ * Gemini 2.5 Pro (multimodal). The uploader's notes/title are provided as
  * context, but the model watches the clip and must ground every claim in
  * what it actually sees.
  */

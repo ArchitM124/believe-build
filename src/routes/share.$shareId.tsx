@@ -33,13 +33,14 @@ function SharePage() {
   const { data, isLoading } = useQuery({
     queryKey: ["share", shareId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("plays")
-        .select("id,title,outcome,what_happened,what_went_right,what_went_wrong,alternative,confidence,share_id,duration_seconds")
-        .eq("share_id", shareId)
-        .maybeSingle();
+      // Reads go through a SECURITY DEFINER RPC that returns only the safe,
+      // share-appropriate columns for a single row — anon no longer has direct
+      // SELECT on the plays table (see migration 20260712000000).
+      const { data, error } = await supabase.rpc("get_shared_possession", {
+        p_share_id: shareId,
+      });
       if (error) throw error;
-      return data as Play | null;
+      return ((data as Play[] | null)?.[0] ?? null) as Play | null;
     },
   });
 

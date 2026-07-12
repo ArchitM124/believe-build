@@ -181,7 +181,12 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     if (!file) return toast.error("Pick a video file");
-    if (file.size > 500 * 1024 * 1024) return toast.error("Clip exceeds 500MB — trim it first");
+    // Must match MAX_VIDEO_BYTES in analyze-possession.functions.ts — the model
+    // takes the clip inline, so anything larger is rejected before analysis.
+    if (file.size > 20 * 1024 * 1024)
+      return toast.error(
+        "Clip exceeds 20MB. Trim to a single possession (≈≤15s at 1080p, ≤30s at 720p).",
+      );
 
     const { data: userRes } = await supabase.auth.getUser();
     const uid = userRes.user?.id;
@@ -224,21 +229,32 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     setProgress(70);
     await supabase.from("plays").update({ video_path: path }).eq("id", play.id);
 
-    setProgress(85);
-    try {
-      await analyzePossession({ data: { possessionId: play.id } });
-      setProgress(100);
-      toast.success("Breakdown ready");
-      onDone();
-      setOpen(false);
-      navigate({ to: "/possessions/$id", params: { id: play.id } });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Analysis failed");
-      onDone();
-      setOpen(false);
-    } finally {
-      setBusy(false);
-    }
+    // Upload is done — hand the user straight to the possession page. Analysis
+    // runs in the background; the dashboard and detail views poll on `status`,
+    // so we don't block the dialog on a full video round-trip to the model.
+    setProgress(100);
+    setBusy(false);
+    onDone();
+    setOpen(false);
+    setFile(null);
+    setProgress(0);
+    toast.success("Uploaded — the AI is breaking it down");
+    navigate({ to: "/possessions/$id", params: { id: play.id } });
+
+    void analyzePossession({ data: { possessionId: play.id } })
+      .then(() => onDone())
+      .catch(async (err) => {
+        // The server function already marks the row failed for errors it sees;
+        // this covers the case where the request never reached the server.
+        await supabase
+          .from("plays")
+          .update({
+            status: "failed",
+            error: err instanceof Error ? err.message : "Analysis failed",
+          })
+          .eq("id", play.id);
+        onDone();
+      });
   };
 
   return (
@@ -252,7 +268,7 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Clip (MP4 / MOV, up to 500MB)</Label>
+            <Label>Clip (MP4 / MOV, one possession, up to 20MB)</Label>
             <div
               onClick={() => inputRef.current?.click()}
               className="cursor-pointer rounded-md border border-dashed border-border bg-muted/30 p-6 text-center hover:border-primary/60"
