@@ -50,7 +50,9 @@ async function main() {
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {
-    console.error(`No cases file at ${casesPath}.\nCopy eval/cases.example.json to eval/cases.json and fill it in.`);
+    console.error(
+      `No cases file at ${casesPath}.\nCopy eval/cases.example.json to eval/cases.json and fill it in.`,
+    );
     process.exit(1);
   }
   const cases = JSON.parse(readFileSync(casesPath, "utf8")) as Case[];
@@ -105,7 +107,9 @@ async function main() {
     );
     if (c.truth) console.log(`   truth: ${c.truth}`);
     console.log(`   said : ${r.what_happened}`);
-    console.log(`   conf : ${r.confidence}  readable=${r.readable}  observations=${r.observations.length}`);
+    console.log(
+      `   conf : ${r.confidence}  readable=${r.readable}  observations=${r.observations.length}`,
+    );
 
     results.push({
       id: c.id,
@@ -128,7 +132,9 @@ async function main() {
   console.log(
     `\n— Outcome accuracy: ${graded ? `${correct}/${graded} (${Math.round((100 * correct) / graded)}%)` : "no graded cases"} —`,
   );
-  console.log(`Full results written to ${outPath}. Compare the "said" vs "truth" lines to grade the specifics by hand.`);
+  console.log(
+    `Full results written to ${outPath}. Compare the "said" vs "truth" lines to grade the specifics by hand.`,
+  );
 }
 
 main();

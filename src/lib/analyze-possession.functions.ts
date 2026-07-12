@@ -29,10 +29,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
     if (pErr || !play) throw new Error("Possession not found");
     if (!play.video_path) throw new Error("No video attached to this possession");
 
-    await supabase
-      .from("plays")
-      .update({ status: "processing", error: null })
-      .eq("id", play.id);
+    await supabase.from("plays").update({ status: "processing", error: null }).eq("id", play.id);
 
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) {
@@ -48,8 +45,8 @@ export const analyzePossession = createServerFn({ method: "POST" })
     let mimeType = "video/mp4";
     let sizeMB = 0;
     try {
-      const { data: signed, error: sErr } = await supabase
-        .storage.from("game-videos")
+      const { data: signed, error: sErr } = await supabase.storage
+        .from("game-videos")
         .createSignedUrl(play.video_path, 60 * 5);
       if (sErr || !signed?.signedUrl) throw new Error(sErr?.message ?? "Could not sign video URL");
 
@@ -63,7 +60,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
       sizeMB = buf.byteLength / (1024 * 1024);
       if (buf.byteLength > MAX_VIDEO_BYTES) {
         throw new Error(
-          `Clip is ${sizeMB.toFixed(1)} MB. For accurate AI analysis, please trim to a single possession under 20 MB (usually ≤15 seconds at 1080p, or ≤30s at 720p).`
+          `Clip is ${sizeMB.toFixed(1)} MB. For accurate AI analysis, please trim to a single possession under 20 MB (usually ≤15 seconds at 1080p, or ≤30s at 720p).`,
         );
       }
 
@@ -120,7 +117,10 @@ export const analyzePossession = createServerFn({ method: "POST" })
       .eq("id", play.id);
 
     if (uErr) {
-      await supabase.from("plays").update({ status: "failed", error: uErr.message }).eq("id", play.id);
+      await supabase
+        .from("plays")
+        .update({ status: "failed", error: uErr.message })
+        .eq("id", play.id);
       throw new Error(uErr.message);
     }
 

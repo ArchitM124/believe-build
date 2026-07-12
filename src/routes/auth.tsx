@@ -58,7 +58,9 @@ function AuthPage() {
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden bg-card court-grid p-12 lg:flex lg:flex-col lg:justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground font-bold">P</div>
+          <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground font-bold">
+            P
+          </div>
           <span className="text-lg font-semibold">PlayIQ</span>
         </Link>
         <div>
@@ -76,7 +78,9 @@ function AuthPage() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <h2 className="text-2xl font-semibold">Welcome</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in or create your coach account.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign in or create your coach account.
+          </p>
 
           <Tabs defaultValue="signin" className="mt-8">
             <TabsList className="grid w-full grid-cols-2">
@@ -109,7 +113,10 @@ function AuthPage() {
   );
 }
 
-function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+function Field({
+  label,
+  ...props
+}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={props.name}>{label}</Label>

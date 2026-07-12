@@ -7,20 +7,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import {
-  Upload, Film, CheckCircle2, AlertCircle, Loader2, Plus, ArrowRight, Flag,
+  Upload,
+  Film,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Plus,
+  ArrowRight,
+  Flag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzePossession } from "@/lib/analyze-possession.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({ meta: [{ title: "Possessions — PlayIQ" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({
+    meta: [{ title: "Possessions — PlayIQ" }, { name: "robots", content: "noindex" }],
+  }),
   component: Dashboard,
 });
 
@@ -42,8 +62,13 @@ type Possession = {
 };
 
 const OUTCOME_LABEL: Record<string, string> = {
-  made_shot: "Made shot", missed_shot: "Missed shot", turnover: "Turnover",
-  defensive_stop: "D stop", defensive_breakdown: "D breakdown", foul: "Foul", other: "Other",
+  made_shot: "Made shot",
+  missed_shot: "Missed shot",
+  turnover: "Turnover",
+  defensive_stop: "D stop",
+  defensive_breakdown: "D breakdown",
+  foul: "Foul",
+  other: "Other",
 };
 
 function Dashboard() {
@@ -55,7 +80,9 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("plays")
-        .select("id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at")
+        .select(
+          "id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at",
+        )
         .not("user_id", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -114,7 +141,9 @@ function Dashboard() {
           <EmptyState onDone={() => qc.invalidateQueries({ queryKey: ["possessions"] })} />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {rows.map((p) => <PossessionCard key={p.id} p={p} />)}
+            {rows.map((p) => (
+              <PossessionCard key={p.id} p={p} />
+            ))}
           </div>
         )}
       </div>
@@ -125,7 +154,12 @@ function Dashboard() {
 function StatusPill({ status }: { status: Possession["status"] }) {
   const map = {
     uploading: { icon: Upload, label: "Uploading", color: "text-muted-foreground" },
-    processing: { icon: Loader2, label: "Analyzing", color: "text-[color:var(--warn)]", spin: true },
+    processing: {
+      icon: Loader2,
+      label: "Analyzing",
+      color: "text-[color:var(--warn)]",
+      spin: true,
+    },
     ready: { icon: CheckCircle2, label: "Ready", color: "text-[color:var(--good)]" },
     failed: { icon: AlertCircle, label: "Failed", color: "text-[color:var(--bad)]" },
   } as const;
@@ -161,9 +195,13 @@ function PossessionCard({ p }: { p: Possession }) {
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="text-[10px] uppercase">{p.uploader_role}</Badge>
+        <Badge variant="secondary" className="text-[10px] uppercase">
+          {p.uploader_role}
+        </Badge>
         {p.status === "ready" && (
-          <Badge variant="outline" className="text-[10px] uppercase">{OUTCOME_LABEL[p.outcome] ?? p.outcome}</Badge>
+          <Badge variant="outline" className="text-[10px] uppercase">
+            {OUTCOME_LABEL[p.outcome] ?? p.outcome}
+          </Badge>
         )}
         {p.flagged && (
           <span className="inline-flex items-center gap-1 text-[10px] text-primary">
@@ -176,9 +214,7 @@ function PossessionCard({ p }: { p: Possession }) {
         <StatusPill status={p.status} />
         <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
       </div>
-      {p.error && (
-        <p className="mt-3 line-clamp-2 text-xs text-[color:var(--bad)]">{p.error}</p>
-      )}
+      {p.error && <p className="mt-3 line-clamp-2 text-xs text-[color:var(--bad)]">{p.error}</p>}
     </Link>
   );
 }
@@ -188,7 +224,9 @@ function EmptyState({ onDone }: { onDone: () => void }) {
     <div className="rounded-xl border border-dashed border-border p-12 text-center court-grid">
       <Film className="mx-auto h-10 w-10 text-primary" />
       <h3 className="mt-4 text-xl font-semibold">No possessions yet</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Upload one clip — the AI breaks it down for you.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Upload one clip — the AI breaks it down for you.
+      </p>
       <div className="mt-6">
         <UploadDialog onDone={onDone} />
       </div>
@@ -223,7 +261,11 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     setProgress(5);
 
     let duration: number | null = null;
-    try { duration = await readDuration(file); } catch { /* ignore */ }
+    try {
+      duration = await readDuration(file);
+    } catch {
+      /* ignore */
+    }
 
     // Insert possession row first
     const { data: play, error: pErr } = await supabase
@@ -240,7 +282,10 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
       })
       .select()
       .single();
-    if (pErr || !play) { setBusy(false); return toast.error(pErr?.message ?? "Failed to create possession"); }
+    if (pErr || !play) {
+      setBusy(false);
+      return toast.error(pErr?.message ?? "Failed to create possession");
+    }
 
     const path = `${uid}/possessions/${play.id}/${file.name}`;
     setProgress(20);
@@ -250,7 +295,10 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
       contentType: file.type || "video/mp4",
     });
     if (upErr) {
-      await supabase.from("plays").update({ status: "failed", error: upErr.message }).eq("id", play.id);
+      await supabase
+        .from("plays")
+        .update({ status: "failed", error: upErr.message })
+        .eq("id", play.id);
       setBusy(false);
       return toast.error(upErr.message);
     }
@@ -289,7 +337,9 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2"><Plus className="h-4 w-4" /> Upload possession</Button>
+        <Button className="gap-2">
+          <Plus className="h-4 w-4" /> Upload possession
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
@@ -304,7 +354,11 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             >
               <Upload className="mx-auto h-6 w-6 text-primary" />
               <p className="mt-2 text-sm">{file ? file.name : "Click to select a clip"}</p>
-              {file && <p className="mt-1 text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+              {file && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {(file.size / 1024 / 1024).toFixed(1)} MB
+                </p>
+              )}
             </div>
             <input
               ref={inputRef}
@@ -323,7 +377,9 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             <div className="space-y-1.5">
               <Label>I am a…</Label>
               <Select name="uploader_role" defaultValue="coach">
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="coach">Coach</SelectItem>
                   <SelectItem value="player">Player</SelectItem>
@@ -337,7 +393,9 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             <div className="space-y-1.5">
               <Label>Attacking which basket?</Label>
               <Select name="attack_direction" defaultValue="unclear">
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="left">Left side</SelectItem>
                   <SelectItem value="right">Right side</SelectItem>
@@ -360,7 +418,11 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             <div className="space-y-1">
               <Progress value={progress} />
               <p className="text-xs text-muted-foreground">
-                {progress < 70 ? "Uploading clip…" : progress < 100 ? "Running AI breakdown…" : "Done"}
+                {progress < 70
+                  ? "Uploading clip…"
+                  : progress < 100
+                    ? "Running AI breakdown…"
+                    : "Done"}
               </p>
             </div>
           )}
@@ -381,8 +443,14 @@ function readDuration(file: File): Promise<number> {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
-    v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Math.floor(v.duration)); };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("cannot read metadata")); };
+    v.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(Math.floor(v.duration));
+    };
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("cannot read metadata"));
+    };
     v.src = url;
   });
 }

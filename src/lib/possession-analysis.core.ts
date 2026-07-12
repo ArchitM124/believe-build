@@ -198,10 +198,7 @@ Hard rules:
 - If the log is thin, mostly uncertain, or "readable" was false, set confidence "low", keep claims minimal, and state plainly what could not be determined. Never invent specifics to sound authoritative.
 - Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences.`;
 
-function judgeUser(
-  ctx: AnalysisContext,
-  observation: ObservationResponse,
-): GatewayMessage {
+function judgeUser(ctx: AnalysisContext, observation: ObservationResponse): GatewayMessage {
   const text = `Here is the verified observation log for one possession.
 
 ${contextBlock(ctx)}
@@ -278,10 +275,7 @@ export async function runPossessionAnalysis(params: {
   // Pass 1 — watch and observe (low temperature: stay literal).
   const obsRaw = await callGateway(
     apiKey,
-    [
-      { role: "system", content: OBSERVE_SYSTEM },
-      observeUser(context, videoDataUrl),
-    ],
+    [{ role: "system", content: OBSERVE_SYSTEM }, observeUser(context, videoDataUrl)],
     0.15,
   );
   const obs = parseModelJson<ObservationResponse>(obsRaw);
@@ -289,10 +283,7 @@ export async function runPossessionAnalysis(params: {
   // Pass 2 — coach the play from the log only (no video, slightly warmer).
   const judgeRaw = await callGateway(
     apiKey,
-    [
-      { role: "system", content: JUDGE_SYSTEM },
-      judgeUser(context, obs),
-    ],
+    [{ role: "system", content: JUDGE_SYSTEM }, judgeUser(context, obs)],
     0.2,
   );
   const judged = parseModelJson<JudgeResponse>(judgeRaw);

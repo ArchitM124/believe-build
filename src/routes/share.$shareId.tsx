@@ -45,15 +45,23 @@ function SharePage() {
   });
 
   if (isLoading) {
-    return <div className="grid min-h-screen place-items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+    return (
+      <div className="grid min-h-screen place-items-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
   }
   if (!data) {
     return (
       <div className="grid min-h-screen place-items-center px-4 text-center">
         <div>
           <h1 className="text-2xl font-semibold">Possession not found</h1>
-          <p className="mt-2 text-sm text-muted-foreground">This share link is invalid or was removed.</p>
-          <Link to="/" className="mt-4 inline-block text-primary underline">Home</Link>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This share link is invalid or was removed.
+          </p>
+          <Link to="/" className="mt-4 inline-block text-primary underline">
+            Home
+          </Link>
         </div>
       </div>
     );
@@ -65,7 +73,9 @@ function SharePage() {
       <header className="border-b border-border/60">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <Link to="/" className="flex items-center gap-2">
-            <div className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground font-bold text-sm">P</div>
+            <div className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
+              P
+            </div>
             <span className="font-semibold">PlayIQ</span>
           </Link>
           <span className="text-xs text-muted-foreground">Shared possession</span>
@@ -82,7 +92,9 @@ function SharePage() {
           <Badge variant="secondary">{p.outcome.replace("_", " ")}</Badge>
           <Badge variant="outline">Confidence: {p.confidence}</Badge>
           {p.duration_seconds != null && (
-            <span className="scoreboard text-xs text-muted-foreground">{p.duration_seconds}s clip</span>
+            <span className="scoreboard text-xs text-muted-foreground">
+              {p.duration_seconds}s clip
+            </span>
           )}
         </div>
 
@@ -91,7 +103,9 @@ function SharePage() {
         )}
 
         <div className="mt-8 space-y-5">
-          {p.what_went_right && <Row label="What went right" body={p.what_went_right} tone="good" />}
+          {p.what_went_right && (
+            <Row label="What went right" body={p.what_went_right} tone="good" />
+          )}
           {p.what_went_wrong && <Row label="What went wrong" body={p.what_went_wrong} tone="bad" />}
           {p.alternative && <Row label="Do differently" body={p.alternative} tone="warn" />}
         </div>
@@ -105,8 +119,21 @@ function SharePage() {
   );
 }
 
-function Row({ label, body, tone }: { label: string; body: string; tone: "good" | "bad" | "warn" }) {
-  const color = tone === "good" ? "text-[color:var(--good)]" : tone === "bad" ? "text-[color:var(--bad)]" : "text-[color:var(--warn)]";
+function Row({
+  label,
+  body,
+  tone,
+}: {
+  label: string;
+  body: string;
+  tone: "good" | "bad" | "warn";
+}) {
+  const color =
+    tone === "good"
+      ? "text-[color:var(--good)]"
+      : tone === "bad"
+        ? "text-[color:var(--bad)]"
+        : "text-[color:var(--warn)]";
   return (
     <div>
       <div className={`text-xs font-semibold uppercase tracking-[0.25em] ${color}`}>{label}</div>

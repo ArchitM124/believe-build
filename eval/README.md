@@ -33,7 +33,7 @@ or the live app.**
 
 - The final line is **outcome accuracy** (e.g. `8/10 (80%)`) — the objective score.
 - For each clip it prints the AI's `said` line next to your `truth` line so you
-  can judge whether the *specifics* were right, not just the category.
+  can judge whether the _specifics_ were right, not just the category.
 - Everything is saved to `eval/results.json` for a closer look.
 
 `clips/`, `cases.json`, and `results.json` are git-ignored — your footage and

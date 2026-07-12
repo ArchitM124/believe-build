@@ -30,7 +30,9 @@ function AuthLayout() {
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
           <Link to="/dashboard" className="flex items-center gap-2">
-            <div className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground font-bold text-sm">P</div>
+            <div className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
+              P
+            </div>
             <span className="font-semibold tracking-tight">PlayIQ</span>
           </Link>
           <div className="flex items-center gap-3">

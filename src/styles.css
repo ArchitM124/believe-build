@@ -42,17 +42,17 @@
   /* Dark broadcast palette with basketball-orange primary */
   --background: oklch(0.16 0.012 40);
   --foreground: oklch(0.97 0.008 80);
-  --card: oklch(0.20 0.013 40);
+  --card: oklch(0.2 0.013 40);
   --card-foreground: oklch(0.97 0.008 80);
-  --popover: oklch(0.20 0.013 40);
+  --popover: oklch(0.2 0.013 40);
   --popover-foreground: oklch(0.97 0.008 80);
-  --primary: oklch(0.72 0.19 42);          /* basketball orange */
+  --primary: oklch(0.72 0.19 42); /* basketball orange */
   --primary-foreground: oklch(0.18 0.02 40);
   --secondary: oklch(0.26 0.014 40);
   --secondary-foreground: oklch(0.97 0.008 80);
   --muted: oklch(0.23 0.012 40);
   --muted-foreground: oklch(0.68 0.02 60);
-  --accent: oklch(0.30 0.05 42);
+  --accent: oklch(0.3 0.05 42);
   --accent-foreground: oklch(0.97 0.008 80);
   --destructive: oklch(0.62 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
@@ -61,7 +61,7 @@
   --ring: oklch(0.72 0.19 42);
   --good: oklch(0.72 0.16 155);
   --bad: oklch(0.66 0.22 25);
-  --warn: oklch(0.80 0.15 85);
+  --warn: oklch(0.8 0.15 85);
   --court: oklch(0.55 0.12 55);
 }
 
@@ -71,13 +71,30 @@
 }
 
 @layer base {
-  * { border-color: var(--color-border); }
-  html, body { background-color: var(--color-background); color: var(--color-foreground); }
-  body { font-family: var(--font-display); font-feature-settings: "ss01","cv11"; }
-  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+  * {
+    border-color: var(--color-border);
+  }
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+  body {
+    font-family: var(--font-display);
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
 }
 
-@utility text-balance { text-wrap: balance; }
+@utility text-balance {
+  text-wrap: balance;
+}
 @utility court-grid {
   background-image:
     linear-gradient(oklch(1 0 0 / 0.03) 1px, transparent 1px),

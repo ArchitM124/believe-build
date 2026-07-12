@@ -13,16 +13,18 @@ afterEach(() => {
 
 // ---- parseModelJson: the model sometimes wraps JSON in markdown fences ----
 
+type Parsed = { a: number };
+
 test("parseModelJson reads plain JSON", () => {
-  expect(parseModelJson('{"a":1}')).toEqual({ a: 1 });
+  expect(parseModelJson<Parsed>('{"a":1}')).toEqual({ a: 1 });
 });
 
 test("parseModelJson strips ```json fences", () => {
-  expect(parseModelJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+  expect(parseModelJson<Parsed>('```json\n{"a":1}\n```')).toEqual({ a: 1 });
 });
 
 test("parseModelJson strips bare ``` fences", () => {
-  expect(parseModelJson('```\n{"a":1}\n```')).toEqual({ a: 1 });
+  expect(parseModelJson<Parsed>('```\n{"a":1}\n```')).toEqual({ a: 1 });
 });
 
 test("parseModelJson throws on non-JSON (caller marks the clip failed)", () => {

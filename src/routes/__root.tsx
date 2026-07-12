@@ -49,7 +49,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
-            onClick={() => { router.invalidate(); reset(); }}
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
             className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
           >
             Try again
@@ -69,10 +72,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "PlayIQ — AI Basketball Film Analysis" },
-      { name: "description", content: "Upload game film. Get clip-by-clip coaching feedback in minutes — what happened, what went right, what went wrong, and what to do differently." },
+      {
+        name: "description",
+        content:
+          "Upload game film. Get clip-by-clip coaching feedback in minutes — what happened, what went right, what went wrong, and what to do differently.",
+      },
       { name: "author", content: "PlayIQ" },
       { property: "og:title", content: "PlayIQ — AI Basketball Film Analysis" },
-      { property: "og:description", content: "Upload game film. Get clip-by-clip coaching feedback in minutes." },
+      {
+        property: "og:description",
+        content: "Upload game film. Get clip-by-clip coaching feedback in minutes.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -81,7 +91,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,
