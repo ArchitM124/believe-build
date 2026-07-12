@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -36,6 +36,8 @@ type Possession = {
   confidence: "low" | "medium" | "high";
   flagged: boolean;
   duration_seconds: number | null;
+  video_path: string | null;
+  updated_at: string;
   created_at: string;
 };
 
@@ -53,7 +55,7 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("plays")
-        .select("id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,created_at")
+        .select("id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at")
         .not("user_id", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -64,6 +66,31 @@ function Dashboard() {
       return list.some((p) => p.status === "processing" || p.status === "uploading") ? 3000 : false;
     },
   });
+
+  // Self-heal: if a clip has been stuck mid-analysis for over 2 minutes (e.g.
+  // the uploader closed the tab before the background analysis finished),
+  // restart it. analyzePossession is safe to re-run — it just overwrites.
+  const resumedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!rows) return;
+    const STALL_MS = 120_000;
+    const now = Date.now();
+    for (const p of rows) {
+      const stalled =
+        (p.status === "processing" || p.status === "uploading") &&
+        p.video_path != null &&
+        now - new Date(p.updated_at).getTime() > STALL_MS &&
+        !resumedRef.current.has(p.id);
+      if (!stalled) continue;
+      resumedRef.current.add(p.id);
+      void analyzePossession({ data: { possessionId: p.id } })
+        .then(() => qc.invalidateQueries({ queryKey: ["possessions"] }))
+        .catch(() => {
+          // The server function marks the row failed on errors it can see.
+          resumedRef.current.delete(p.id); // allow a later retry
+        });
+    }
+  }, [rows, qc]);
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-8">

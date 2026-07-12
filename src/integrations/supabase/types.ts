@@ -14,54 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      games: {
-        Row: {
-          camera_angle: Database["public"]["Enums"]["camera_angle"]
-          created_at: string
-          duration_seconds: number | null
-          error: string | null
-          game_date: string | null
-          id: string
-          opponent: string | null
-          processing_cost_cents: number | null
-          status: Database["public"]["Enums"]["game_status"]
-          title: string
-          updated_at: string
-          user_id: string
-          video_path: string | null
-        }
-        Insert: {
-          camera_angle?: Database["public"]["Enums"]["camera_angle"]
-          created_at?: string
-          duration_seconds?: number | null
-          error?: string | null
-          game_date?: string | null
-          id?: string
-          opponent?: string | null
-          processing_cost_cents?: number | null
-          status?: Database["public"]["Enums"]["game_status"]
-          title: string
-          updated_at?: string
-          user_id: string
-          video_path?: string | null
-        }
-        Update: {
-          camera_angle?: Database["public"]["Enums"]["camera_angle"]
-          created_at?: string
-          duration_seconds?: number | null
-          error?: string | null
-          game_date?: string | null
-          id?: string
-          opponent?: string | null
-          processing_cost_cents?: number | null
-          status?: Database["public"]["Enums"]["game_status"]
-          title?: string
-          updated_at?: string
-          user_id?: string
-          video_path?: string | null
-        }
-        Relationships: []
-      }
       plays: {
         Row: {
           alternative: string | null
@@ -71,7 +23,6 @@ export type Database = {
           end_seconds: number | null
           error: string | null
           flagged: boolean
-          game_id: string | null
           id: string
           notes: string | null
           outcome: Database["public"]["Enums"]["play_outcome"]
@@ -96,7 +47,6 @@ export type Database = {
           end_seconds?: number | null
           error?: string | null
           flagged?: boolean
-          game_id?: string | null
           id?: string
           notes?: string | null
           outcome?: Database["public"]["Enums"]["play_outcome"]
@@ -121,7 +71,6 @@ export type Database = {
           end_seconds?: number | null
           error?: string | null
           flagged?: boolean
-          game_id?: string | null
           id?: string
           notes?: string | null
           outcome?: Database["public"]["Enums"]["play_outcome"]
@@ -138,15 +87,7 @@ export type Database = {
           what_went_right?: string | null
           what_went_wrong?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "plays_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -191,9 +132,7 @@ export type Database = {
       }
     }
     Enums: {
-      camera_angle: "sideline" | "baseline" | "elevated" | "other"
       confidence_level: "low" | "medium" | "high"
-      game_status: "uploading" | "processing" | "ready" | "failed"
       play_outcome:
         | "made_shot"
         | "missed_shot"
@@ -331,9 +270,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      camera_angle: ["sideline", "baseline", "elevated", "other"],
       confidence_level: ["low", "medium", "high"],
-      game_status: ["uploading", "processing", "ready", "failed"],
       play_outcome: [
         "made_shot",
         "missed_shot",

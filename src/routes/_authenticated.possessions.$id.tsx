@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ type Play = {
   video_path: string | null;
   duration_seconds: number | null;
   share_id: string;
+  updated_at: string;
   created_at: string;
 };
 
@@ -65,6 +66,22 @@ function PossessionDetail() {
       if (data?.signedUrl) setVideoUrl(data.signedUrl);
     });
   }, [play?.video_path]);
+
+  // Self-heal: if analysis stalled (tab closed before it finished), restart it
+  // once the clip has been stuck for over 2 minutes. Safe to re-run.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (!play || resumedRef.current) return;
+    const stalled =
+      (play.status === "processing" || play.status === "uploading") &&
+      play.video_path != null &&
+      Date.now() - new Date(play.updated_at).getTime() > 120_000;
+    if (!stalled) return;
+    resumedRef.current = true;
+    void analyzePossession({ data: { possessionId: play.id } })
+      .then(() => refetch())
+      .catch(() => { resumedRef.current = false; });
+  }, [play, refetch]);
 
   const reanalyze = async () => {
     setReanalyzing(true);
