@@ -210,7 +210,18 @@ Hard rules:
 - Prefer observations with "certain": true. Treat "certain": false as tentative and let it lower your confidence.
 - In each field, cite the timestamp(s) you rely on, e.g. "(~0:04)".
 - If the log is thin, mostly uncertain, or "readable" was false, set confidence "low", keep claims minimal, and state plainly what could not be determined. Never invent specifics to sound authoritative.
-- Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences.`;
+- Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences.
+
+Outcome classification — ALWAYS from the uploader's team's perspective (their jersey color is given in the context). Pick the label for how the possession actually ended:
+- made_shot: the uploader's team scored (layup, dunk, jumper, three, and-one).
+- missed_shot: the uploader's team took a shot that missed OR was blocked. A blocked shot is missed_shot, NOT a defensive_stop.
+- turnover: the uploader's team lost the ball before a shot — steal, intercepted or bad pass, ball knocked out of bounds off them, travel/double-dribble, dribbled off their own foot, offensive foul, or shot-clock violation. If they lost possession and the other team took over, it is a turnover for them.
+- foul: use ONLY when a foul is the defining end of the possession and none of made_shot/missed_shot/turnover clearly applies. If they lost the ball, prefer turnover; if a shot went up, prefer made_shot/missed_shot.
+- defensive_stop: the uploader's team was DEFENDING and forced a miss or turnover.
+- defensive_breakdown: the uploader's team was DEFENDING and gave up an easy score.
+- other: genuinely none of the above, or too unclear to tell.
+Uploaders almost always film their OWN team's offense. When you are not clearly certain the uploader's team was defending, assume they were on OFFENSE and label made_shot / missed_shot / turnover — do NOT reach for defensive_stop / defensive_breakdown just because the team identity is ambiguous.
+If the log does not let you confidently tell which team is the uploader's by jersey color (e.g. dark blue vs black), say so in what_happened and set confidence "low".`;
 
 export function judgeUserText(ctx: AnalysisContext, observation: ObservationResponse): string {
   return `Here is the verified observation log for one possession.

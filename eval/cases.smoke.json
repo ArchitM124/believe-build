@@ -1,9 +1,0 @@
-[
-  {
-    "id": "file1",
-    "video": "clips/file1.mp4",
-    "team_color": "white",
-    "truth": "behind-the-back out of bounds",
-    "expected_outcome": "turnover"
-  }
-]

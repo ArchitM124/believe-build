@@ -41,3 +41,5 @@ eval/results.json
 *.sln
 *.sw?
 eval/.env
+eval/*.log
+eval/cases.smoke.json
