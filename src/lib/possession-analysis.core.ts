@@ -112,7 +112,7 @@ async function callGateway(
   return json?.choices?.[0]?.message?.content ?? "{}";
 }
 
-function parseJson<T>(content: string): T {
+export function parseModelJson<T>(content: string): T {
   // Strip accidental markdown fences the model sometimes adds anyway.
   const cleaned = content
     .trim()
@@ -230,6 +230,42 @@ Return ONLY valid JSON matching this exact type — no prose, no markdown fences
   return { role: "user", content: [{ type: "text", text }] };
 }
 
+// ---- Pure normalization (validated + clamped; unit-tested) --------------
+
+/** Coerce the model's loose observation array into clean, typed rows. */
+export function normalizeObservations(raw: unknown): Observation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((o) => ({
+    t: String((o as Observation)?.t ?? ""),
+    desc: String((o as Observation)?.desc ?? ""),
+    certain: Boolean((o as Observation)?.certain),
+  }));
+}
+
+/**
+ * Turn the two raw model responses into a safe AnalysisResult:
+ * unknown outcomes collapse to "other", unknown confidence to "low",
+ * blank optional fields to "", and every text field is length-capped.
+ */
+export function normalizeAnalysis(
+  observation: ObservationResponse,
+  judged: JudgeResponse,
+): AnalysisResult {
+  const rawOutcome = String(judged.outcome ?? "other") as Outcome;
+  const rawConf = String(judged.confidence ?? "low") as Confidence;
+  return {
+    outcome: OUTCOMES.has(rawOutcome) ? rawOutcome : "other",
+    confidence: CONFIDENCES.has(rawConf) ? rawConf : "low",
+    what_happened: String(judged.what_happened ?? "").slice(0, 2000),
+    what_went_right: judged.what_went_right ? String(judged.what_went_right).slice(0, 2000) : "",
+    what_went_wrong: judged.what_went_wrong ? String(judged.what_went_wrong).slice(0, 2000) : "",
+    alternative: judged.alternative ? String(judged.alternative).slice(0, 2000) : "",
+    flagged: Boolean(judged.flagged),
+    readable: observation.readable !== false,
+    observations: normalizeObservations(observation.observations),
+  };
+}
+
 // ---- Public entry point -------------------------------------------------
 
 export async function runPossessionAnalysis(params: {
@@ -248,14 +284,7 @@ export async function runPossessionAnalysis(params: {
     ],
     0.15,
   );
-  const obs = parseJson<ObservationResponse>(obsRaw);
-  const observations: Observation[] = Array.isArray(obs.observations)
-    ? obs.observations.map((o) => ({
-        t: String(o?.t ?? ""),
-        desc: String(o?.desc ?? ""),
-        certain: Boolean(o?.certain),
-      }))
-    : [];
+  const obs = parseModelJson<ObservationResponse>(obsRaw);
 
   // Pass 2 — coach the play from the log only (no video, slightly warmer).
   const judgeRaw = await callGateway(
@@ -266,20 +295,7 @@ export async function runPossessionAnalysis(params: {
     ],
     0.2,
   );
-  const judged = parseJson<JudgeResponse>(judgeRaw);
+  const judged = parseModelJson<JudgeResponse>(judgeRaw);
 
-  const rawOutcome = String(judged.outcome ?? "other") as Outcome;
-  const rawConf = String(judged.confidence ?? "low") as Confidence;
-
-  return {
-    outcome: OUTCOMES.has(rawOutcome) ? rawOutcome : "other",
-    confidence: CONFIDENCES.has(rawConf) ? rawConf : "low",
-    what_happened: String(judged.what_happened ?? "").slice(0, 2000),
-    what_went_right: judged.what_went_right ? String(judged.what_went_right).slice(0, 2000) : "",
-    what_went_wrong: judged.what_went_wrong ? String(judged.what_went_wrong).slice(0, 2000) : "",
-    alternative: judged.alternative ? String(judged.alternative).slice(0, 2000) : "",
-    flagged: Boolean(judged.flagged),
-    readable: obs.readable !== false,
-    observations,
-  };
+  return normalizeAnalysis(obs, judged);
 }
