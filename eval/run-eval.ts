@@ -17,9 +17,39 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runPossessionAnalysis } from "../src/lib/possession-analysis.core";
+import {
+  runPossessionAnalysis,
+  normalizeAnalysis,
+  parseModelJson,
+  observeUserText,
+  judgeUserText,
+  OBSERVE_SYSTEM,
+  JUDGE_SYSTEM,
+  type AnalysisContext,
+  type AnalysisResult,
+  type ObservationResponse,
+  type JudgeResponse,
+} from "../src/lib/possession-analysis.core";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+/** Load KEY=VALUE lines from eval/.env into process.env (no dependency). */
+function loadLocalEnv() {
+  const envPath = resolve(here, ".env");
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
 
 const MIME: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -41,12 +71,87 @@ type Case = {
   expected_outcome?: string; // one of the outcome enums, for scoring
 };
 
+const GEMINI_MODEL = "gemini-2.5-pro";
+
+/**
+ * Gemini-direct fallback: runs the SAME two-pass prompts as production
+ * (imported from the core) against Google's native API, so the eval works
+ * with a free Google AI Studio key when the Lovable key isn't handy. Only the
+ * HTTP transport differs; the model, prompts, and normalization are identical.
+ */
+async function callGeminiJson(
+  apiKey: string,
+  systemText: string,
+  userText: string,
+  inlineVideo: { mimeType: string; base64: string } | null,
+  temperature: number,
+): Promise<string> {
+  const parts: Array<Record<string, unknown>> = [{ text: userText }];
+  if (inlineVideo) {
+    parts.push({ inline_data: { mime_type: inlineVideo.mimeType, data: inlineVideo.base64 } });
+  }
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemText }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature, responseMimeType: "application/json" },
+      }),
+    },
+  );
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Gemini error ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+}
+
+async function runViaGemini(params: {
+  base64: string;
+  mimeType: string;
+  apiKey: string;
+  context: AnalysisContext;
+}): Promise<AnalysisResult> {
+  const { base64, mimeType, apiKey, context } = params;
+  const obsRaw = await callGeminiJson(
+    apiKey,
+    OBSERVE_SYSTEM,
+    observeUserText(context),
+    { mimeType, base64 },
+    0.15,
+  );
+  const obs = parseModelJson<ObservationResponse>(obsRaw);
+  const judgeRaw = await callGeminiJson(
+    apiKey,
+    JUDGE_SYSTEM,
+    judgeUserText(context, obs),
+    null,
+    0.2,
+  );
+  const judged = parseModelJson<JudgeResponse>(judgeRaw);
+  return normalizeAnalysis(obs, judged);
+}
+
 async function main() {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) {
-    console.error("Set LOVABLE_API_KEY in your environment first (the same key the app uses).");
+  loadLocalEnv();
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const provider: "lovable" | "gemini" | null = lovableKey ? "lovable" : geminiKey ? "gemini" : null;
+  if (!provider) {
+    console.error(
+      "No API key found. Put ONE of these in eval/.env:\n" +
+        "  LOVABLE_API_KEY=...   (your app's key — tests the exact production path)\n" +
+        "  GEMINI_API_KEY=...    (free from https://aistudio.google.com/apikey)",
+    );
     process.exit(1);
   }
+  console.log(`Provider: ${provider}\n`);
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {
@@ -69,23 +174,32 @@ async function main() {
     }
     const bytes = readFileSync(videoPath);
     const mime = MIME[extname(videoPath).toLowerCase()] ?? "video/mp4";
-    const dataUrl = `data:${mime};base64,${bytes.toString("base64")}`;
+    const base64 = bytes.toString("base64");
+    const context: AnalysisContext = {
+      role: c.role ?? "coach",
+      title: c.title ?? null,
+      notes: c.notes ?? null,
+      teamColor: c.team_color ?? null,
+      attackDirection: c.attack_direction ?? null,
+      durationSec: c.duration_seconds ?? null,
+    };
 
     process.stdout.write(`▶ ${c.id} … `);
     let r;
     try {
-      r = await runPossessionAnalysis({
-        videoDataUrl: dataUrl,
-        apiKey,
-        context: {
-          role: c.role ?? "coach",
-          title: c.title ?? null,
-          notes: c.notes ?? null,
-          teamColor: c.team_color ?? null,
-          attackDirection: c.attack_direction ?? null,
-          durationSec: c.duration_seconds ?? null,
-        },
-      });
+      r =
+        provider === "lovable"
+          ? await runPossessionAnalysis({
+              videoDataUrl: `data:${mime};base64,${base64}`,
+              apiKey: lovableKey as string,
+              context,
+            })
+          : await runViaGemini({
+              base64,
+              mimeType: mime,
+              apiKey: geminiKey as string,
+              context,
+            });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log(`ERROR: ${msg}`);

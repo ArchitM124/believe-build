@@ -140,13 +140,13 @@ function contextBlock(ctx: AnalysisContext): string {
 
 // ---- Pass 1: observation only -------------------------------------------
 
-type ObservationResponse = {
+export type ObservationResponse = {
   readable?: boolean;
   team_in_possession_color?: string;
   observations?: Array<{ t?: unknown; desc?: unknown; certain?: unknown }>;
 };
 
-const OBSERVE_SYSTEM = `You are a meticulous basketball video observer. You are watching ONE possession clip. Your ONLY job is to report what is LITERALLY visible, moment by moment. You do NOT coach, judge, or infer intent.
+export const OBSERVE_SYSTEM = `You are a meticulous basketball video observer. You are watching ONE possession clip. Your ONLY job is to report what is LITERALLY visible, moment by moment. You do NOT coach, judge, or infer intent.
 
 Hard rules:
 - Report events in time order, each with an approximate timestamp (e.g. "0:03").
@@ -155,8 +155,8 @@ Hard rules:
 - Only report the possession's final result if you actually see it happen on screen.
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.`;
 
-function observeUser(ctx: AnalysisContext, videoDataUrl: string): GatewayMessage {
-  const text = `Observe this single basketball possession. Report only what you can see.
+export function observeUserText(ctx: AnalysisContext): string {
+  return `Observe this single basketball possession. Report only what you can see.
 
 ${contextBlock(ctx)}
 
@@ -168,10 +168,13 @@ Return ONLY valid JSON — no prose, no markdown fences:
     { "t": string, "desc": string, "certain": boolean }
   ]
 }`;
+}
+
+function observeUser(ctx: AnalysisContext, videoDataUrl: string): GatewayMessage {
   return {
     role: "user",
     content: [
-      { type: "text", text },
+      { type: "text", text: observeUserText(ctx) },
       { type: "file", file: { filename: "possession.mp4", file_data: videoDataUrl } },
     ],
   };
@@ -179,7 +182,7 @@ Return ONLY valid JSON — no prose, no markdown fences:
 
 // ---- Pass 2: coaching analysis grounded in Pass 1 -----------------------
 
-type JudgeResponse = {
+export type JudgeResponse = {
   outcome?: string;
   what_happened?: string;
   what_went_right?: string;
@@ -189,7 +192,7 @@ type JudgeResponse = {
   flagged?: boolean;
 };
 
-const JUDGE_SYSTEM = `You are PlayIQ, an elite basketball film-study analyst. You are given a VERIFIED observation log from a single possession. You did NOT watch the video yourself — build your entire analysis STRICTLY from the log.
+export const JUDGE_SYSTEM = `You are PlayIQ, an elite basketball film-study analyst. You are given a VERIFIED observation log from a single possession. You did NOT watch the video yourself — build your entire analysis STRICTLY from the log.
 
 Hard rules:
 - Do NOT introduce any detail that is not supported by an observation. If the log does not establish something, treat it as unknown and say so.
@@ -198,8 +201,8 @@ Hard rules:
 - If the log is thin, mostly uncertain, or "readable" was false, set confidence "low", keep claims minimal, and state plainly what could not be determined. Never invent specifics to sound authoritative.
 - Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences.`;
 
-function judgeUser(ctx: AnalysisContext, observation: ObservationResponse): GatewayMessage {
-  const text = `Here is the verified observation log for one possession.
+export function judgeUserText(ctx: AnalysisContext, observation: ObservationResponse): string {
+  return `Here is the verified observation log for one possession.
 
 ${contextBlock(ctx)}
 
@@ -224,7 +227,10 @@ Return ONLY valid JSON matching this exact type — no prose, no markdown fences
   "confidence": "low"|"medium"|"high",  // "high" ONLY if the log is dense and mostly certain.
   "flagged": boolean           // true if this is a strong, clear teaching moment.
 }`;
-  return { role: "user", content: [{ type: "text", text }] };
+}
+
+function judgeUser(ctx: AnalysisContext, observation: ObservationResponse): GatewayMessage {
+  return { role: "user", content: [{ type: "text", text: judgeUserText(ctx, observation) }] };
 }
 
 // ---- Pure normalization (validated + clamped; unit-tested) --------------
