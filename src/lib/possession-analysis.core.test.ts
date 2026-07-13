@@ -111,6 +111,14 @@ test("personal coaching for an unfound player is forced to low confidence", () =
   expect(r.confidence).toBe("low");
 });
 
+test("observer prompt demands decision snapshots; judge demands grounded technique", async () => {
+  const { OBSERVE_SYSTEM, JUDGE_SYSTEM } = await import("./possession-analysis.core");
+  expect(OBSERVE_SYSTEM).toContain("DECISION SNAPSHOTS");
+  expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");
+  expect(JUDGE_SYSTEM).toContain("EXACT technique");
+  expect(JUDGE_SYSTEM).toContain("NEVER propose an option the log does not show existed");
+});
+
 test("prompts include tracking instructions only when a player is set", () => {
   const withPlayer = { role: "player", trackedPlayer: "white #23" };
   const without = { role: "player" };

@@ -176,7 +176,8 @@ Hard rules:
 - Identify players ONLY by jersey color and court location (e.g. "white ball-handler at the right wing"). NEVER invent names or numbers.
 - Set "certain": false whenever the moment is blurry, occluded, off-frame, or too fast to be sure. Do not guess to fill gaps.
 - Only report the possession's final result if you actually see it happen on screen.
-- If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.`;
+- If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.
+- DECISION SNAPSHOTS: at each decision moment (a shot attempt, a pass, the start of a drive, a lost ball), add one extra observation capturing the OPTIONS on the floor at that instant: where the nearest defender is relative to the actor (distance, side, squared-up or trailing or airborne), and where teammates are (open on the wing? trailing the break? in the corner? none in frame?). If no teammate is visible in frame at that moment, say exactly that. These snapshots decide which alternatives actually existed, so be literal and precise about positions.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
   const tracked = ctx.trackedPlayer?.trim();
@@ -229,7 +230,12 @@ Hard rules:
 - Prefer observations with "certain": true. Treat "certain": false as tentative and let it lower your confidence.
 - In each field, cite the timestamp(s) you rely on, e.g. "(~0:04)".
 - If the log is thin, mostly uncertain, or "readable" was false, set confidence "low", keep claims minimal, and state plainly what could not be determined. Never invent specifics to sound authoritative.
-- Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences.
+- Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences (the "alternative" field may use up to 4).
+
+The "alternative" field is a RIGHT-PLAY analysis, not a platitude. Requirements:
+- Scan the log's decision snapshots for what was ACTUALLY available at the key moment (defender position/distance, teammate locations). Choose the best real option. If the log shows no better option existed, say the decision was right and coach the execution instead.
+- Name the EXACT technique, not a category: not "a more protected finish" but WHICH finish and WHY it beats that defender's position — e.g. "euro-step left away from the shot-blocker closing from the right", "jump-stop into a pump fake — the defender was airborne", "reverse layup using the rim to shield the trailing defender", "high-glass extension finish off the outside foot". Same for passes ("pocket pass to the roller at the free-throw line") and coverages ("ICE the screen, force baseline").
+- NEVER propose an option the log does not show existed. No suggested kick-out unless the log places a teammate somewhere catchable. If the log's snapshots are too thin to know what was available, coach the visible execution (footwork, pace, shot selection) and say what information was missing.
 
 Outcome classification — ALWAYS from the uploader's team's perspective (their jersey color is given in the context). Pick the label for how the possession actually ended:
 - made_shot: the uploader's team scored (layup, dunk, jumper, three, and-one).
@@ -279,7 +285,7 @@ Return ONLY valid JSON matching this exact type — no prose, no markdown fences
   "what_happened": string,     // Play-by-play grounded in the log, with cited timestamps.
   "what_went_right": string,   // Correct reads/decisions supported by the log. "" if none notable or unclear.
   "what_went_wrong": string,   // The breakdown: WHO (by color), WHERE, WHAT, and WHY — only if the log supports it. "" if unclear.
-  "alternative": string,       // The specific better read, only if the log supports naming one. "" if unclear.
+  "alternative": string,       // RIGHT-PLAY analysis (up to 4 sentences): best REAL option per the log's decision snapshots + the exact technique to execute it. If the decision was right, coach the execution. Never propose options the log doesn't show. "" only if truly nothing to coach.
   "confidence": "low"|"medium"|"high",  // "high" ONLY if the log is dense and mostly certain.
   "flagged": boolean           // true if this is a strong, clear teaching moment.
 }`;
