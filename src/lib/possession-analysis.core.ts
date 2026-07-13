@@ -177,7 +177,8 @@ Hard rules:
 - Set "certain": false whenever the moment is blurry, occluded, off-frame, or too fast to be sure. Do not guess to fill gaps.
 - Only report the possession's final result if you actually see it happen on screen.
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.
-- DECISION SNAPSHOTS: at each decision moment (a shot attempt, a pass, the start of a drive, a lost ball), add one extra observation capturing the OPTIONS on the floor at that instant: where the nearest defender is relative to the actor (distance, side, squared-up or trailing or airborne), and where teammates are (open on the wing? trailing the break? in the corner? none in frame?). If no teammate is visible in frame at that moment, say exactly that. These snapshots decide which alternatives actually existed, so be literal and precise about positions.`;
+- DECISION SNAPSHOTS: at each decision moment (a shot attempt, a pass, the start of a drive, a lost ball), add one extra observation capturing the OPTIONS on the floor at that instant: where the nearest defender is relative to the actor (distance, side, squared-up or trailing or airborne), and where teammates are (open on the wing? trailing the break? in the corner? none in frame?). If no teammate is visible in frame at that moment, say exactly that. These snapshots decide which alternatives actually existed, so be literal and precise about positions.
+- PLAY-STOPPAGE SIGNALS: watch for signs the play went DEAD mid-clip — most players simultaneously stopping, relaxing, or reversing direction; defenders no longer contesting; the ball casually retrieved or walked back. Record any such signal as its own observation with a timestamp. A basket scored uncontested AFTER such a signal is likely a dead-ball shot (players often finish anyway after a whistle or out-of-bounds) — note that explicitly rather than reporting it as the possession's result.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
   const tracked = ctx.trackedPlayer?.trim();
@@ -247,6 +248,8 @@ Outcome classification — ALWAYS from the uploader's team's perspective (their 
 - other: genuinely none of the above, or too unclear to tell.
 Uploaders almost always film their OWN team's offense. When you are not clearly certain the uploader's team was defending, assume they were on OFFENSE and label made_shot / missed_shot / turnover — do NOT reach for defensive_stop / defensive_breakdown just because the team identity is ambiguous.
 If the log does not let you confidently tell which team is the uploader's by jersey color (e.g. dark blue vs black), say so in what_happened and set confidence "low".
+
+Dead-ball awareness: if the log records stoppage signals (players simultaneously stopping or reversing, defenders no longer contesting) BEFORE a basket, the possession ended at the stoppage — do NOT count that basket as the outcome. If the log shows the play ended but not HOW it ended, use outcome "other", set confidence "low", and say plainly in what_happened that the ending could not be determined from the video. Admitting "unclear" is always better than guessing a concrete outcome.
 
 Role awareness — judge every player against their APPARENT ROLE in the action, not against proximity to the ball:
 - Standard, role-correct behavior is NEVER "what went wrong": spacing to the corner during a drive, holding weak-side position, screening and holding, the roller rolling, a shooter lifting to the wing. These are players doing their jobs.

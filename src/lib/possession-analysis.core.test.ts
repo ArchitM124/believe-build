@@ -114,6 +114,8 @@ test("personal coaching for an unfound player is forced to low confidence", () =
 test("observer prompt demands decision snapshots; judge demands grounded technique", async () => {
   const { OBSERVE_SYSTEM, JUDGE_SYSTEM } = await import("./possession-analysis.core");
   expect(OBSERVE_SYSTEM).toContain("DECISION SNAPSHOTS");
+  expect(OBSERVE_SYSTEM).toContain("PLAY-STOPPAGE SIGNALS");
+  expect(JUDGE_SYSTEM).toContain("Dead-ball awareness");
   expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");
   expect(JUDGE_SYSTEM).toContain("EXACT technique");
   expect(JUDGE_SYSTEM).toContain("NEVER propose an option the log does not show existed");
