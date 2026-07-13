@@ -286,6 +286,7 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
         uploader_role: (fd.get("uploader_role") as "coach" | "player") || "coach",
         team_color: (fd.get("team_color") as string)?.trim() || null,
         attack_direction: (fd.get("attack_direction") as string) || "unclear",
+        tracked_player: (fd.get("tracked_player") as string)?.trim() || null,
         duration_seconds: duration,
         status: "uploading",
       })
@@ -425,6 +426,18 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
                   <SelectItem value="unclear">Not sure</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="tracked_player">Focus on one player (optional)</Label>
+              <Input
+                id="tracked_player"
+                name="tracked_player"
+                placeholder="Jersey: 'white #23' · Pickup: 'gray hoodie, starts left corner'"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to analyze the whole team. Describe what's visible from far away —
+                jersey number and color are best; for pickup use shirt/shorts and where you start.
+              </p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="notes">Notes for the AI (optional)</Label>

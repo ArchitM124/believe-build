@@ -107,6 +107,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
           teamColor: play.team_color,
           attackDirection: play.attack_direction,
           durationSec: play.duration_seconds ?? 0,
+          trackedPlayer: play.tracked_player,
         },
       });
     } catch (e) {

@@ -7,6 +7,7 @@
     "notes": "We wanted the roll, not the pull-up.",
     "team_color": "white",
     "attack_direction": "right",
+    "tracked_player": "white #23",
     "truth": "Turnover — white ball-handler used the ball screen, then threw a lazy cross-court pass that the weak-side defender picked off.",
     "expected_outcome": "turnover"
   },

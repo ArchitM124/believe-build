@@ -29,6 +29,12 @@ export type AnalysisContext = {
   teamColor?: string | null; // uploader's team jersey color, e.g. "white"
   attackDirection?: AttackDirection | string | null;
   durationSec?: number | null;
+  /**
+   * Free-text description of ONE player to track and coach personally.
+   * Organized game: "white #23". Pickup: "gray hoodie, red shorts, starts in
+   * the left corner". Null/empty = analyze the whole team.
+   */
+  trackedPlayer?: string | null;
 };
 
 export type Observation = { t: string; desc: string; certain: boolean };
@@ -54,6 +60,8 @@ export type AnalysisResult = {
   flagged: boolean;
   readable: boolean;
   observations: Observation[];
+  /** true/false when a tracked player was requested; null when not requested. */
+  tracked_player_found: boolean | null;
 };
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -143,6 +151,9 @@ function contextBlock(ctx: AnalysisContext): string {
   return [
     `Uploader role: ${ctx.role}`,
     team,
+    ...(ctx.trackedPlayer?.trim()
+      ? [`TRACKED PLAYER (coach this one player personally): ${ctx.trackedPlayer.trim()}`]
+      : []),
     `Uploader title: ${ctx.title?.trim() || "(none)"}`,
     `Uploader notes: ${ctx.notes?.trim() || "(none)"}`,
     `Clip duration: ~${ctx.durationSec ?? "unknown"}s`,
@@ -154,6 +165,7 @@ function contextBlock(ctx: AnalysisContext): string {
 export type ObservationResponse = {
   readable?: boolean;
   team_in_possession_color?: string;
+  tracked_player_found?: boolean;
   observations?: Array<{ t?: unknown; desc?: unknown; certain?: unknown }>;
 };
 
@@ -167,14 +179,21 @@ Hard rules:
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
+  const tracked = ctx.trackedPlayer?.trim();
+  const trackingRules = tracked
+    ? `
+
+TRACKED PLAYER: "${tracked}". Locate this player using the description (jersey number and color are the strongest cues; in casual games use clothing and the stated starting spot). Re-identify them independently in each moment — do not rely on continuous tracking. In every observation where they are involved or visible, refer to them as "the tracked player" plus their appearance. Note what they do AND where they are when off the ball (spacing, cutting, screening, defending). If at any moment you cannot tell whether someone is the tracked player, say so with "certain": false. If you cannot find anyone matching the description at all, set "tracked_player_found": false and observe the possession normally.`
+    : "";
   return `Observe this single basketball possession. Report only what you can see.
 
-${contextBlock(ctx)}
+${contextBlock(ctx)}${trackingRules}
 
 Return ONLY valid JSON — no prose, no markdown fences:
 {
   "readable": boolean,                  // false if too blurry/short/unclear to analyze reliably
   "team_in_possession_color": string,   // jersey color of the team on offense, or "unclear"
+  "tracked_player_found": boolean,      // ONLY meaningful if a tracked player was specified; true if you located them
   "observations": [
     { "t": string, "desc": string, "certain": boolean }
   ]
@@ -221,18 +240,33 @@ Outcome classification — ALWAYS from the uploader's team's perspective (their 
 - defensive_breakdown: the uploader's team was DEFENDING and gave up an easy score.
 - other: genuinely none of the above, or too unclear to tell.
 Uploaders almost always film their OWN team's offense. When you are not clearly certain the uploader's team was defending, assume they were on OFFENSE and label made_shot / missed_shot / turnover — do NOT reach for defensive_stop / defensive_breakdown just because the team identity is ambiguous.
-If the log does not let you confidently tell which team is the uploader's by jersey color (e.g. dark blue vs black), say so in what_happened and set confidence "low".`;
+If the log does not let you confidently tell which team is the uploader's by jersey color (e.g. dark blue vs black), say so in what_happened and set confidence "low".
+
+Role awareness — judge every player against their APPARENT ROLE in the action, not against proximity to the ball:
+- Standard, role-correct behavior is NEVER "what went wrong": spacing to the corner during a drive, holding weak-side position, screening and holding, the roller rolling, a shooter lifting to the wing. These are players doing their jobs.
+- Only flag genuine deviations that hurt the possession: abandoning spacing to crowd the ball, missing an open read the log shows, late/no rotation on defense, forcing over a set advantage.
+- If the possession was executed fine, SAY SO — leave what_went_wrong empty rather than inventing a critique.`;
 
 export function judgeUserText(ctx: AnalysisContext, observation: ObservationResponse): string {
+  const tracked = ctx.trackedPlayer?.trim();
+  const personalRules = tracked
+    ? `
+
+PERSONAL COACHING MODE for the tracked player ("${tracked}"):
+- what_went_right / what_went_wrong / alternative must be about THIS PLAYER's decisions, positioning, effort, and reads — on and off the ball — not the team in general. what_happened still summarizes the possession, but center the tracked player's involvement in it.
+- Apply the role-awareness rules to them: if their job on this possession was to space, screen, or hold weak-side, doing that is correct — do not criticize it.
+- If the log says the tracked player was not found (tracked_player_found: false) or their involvement is mostly uncertain, say plainly that they could not be identified in this clip, keep all personal claims out, and set confidence "low".`
+    : "";
   return `Here is the verified observation log for one possession.
 
-${contextBlock(ctx)}
+${contextBlock(ctx)}${personalRules}
 
 Observation log (JSON):
 ${JSON.stringify(
   {
     readable: observation.readable ?? true,
     team_in_possession_color: observation.team_in_possession_color ?? "unclear",
+    ...(tracked ? { tracked_player_found: observation.tracked_player_found ?? null } : {}),
     observations: observation.observations ?? [],
   },
   null,
@@ -275,15 +309,24 @@ export function normalizeObservations(raw: unknown): Observation[] {
 export function normalizeAnalysis(
   observation: ObservationResponse,
   judged: JudgeResponse,
+  trackingRequested = false,
 ): AnalysisResult {
   const rawOutcome = String(judged.outcome ?? "other") as Outcome;
   const rawConf = String(judged.confidence ?? "low") as Confidence;
   const readable = observation.readable !== false;
+  const trackedFound = !trackingRequested
+    ? null
+    : observation.tracked_player_found === false
+      ? false
+      : observation.tracked_player_found === true
+        ? true
+        : null;
+  // A clip the observer flagged unreadable — or personal coaching for a player
+  // the observer couldn't find — can never carry high/medium confidence.
+  const capLow = !readable || trackedFound === false;
   return {
     outcome: OUTCOMES.has(rawOutcome) ? rawOutcome : "other",
-    // A clip the observer flagged unreadable can never be "high"/"medium"
-    // confidence, no matter how assertive the judge pass sounded.
-    confidence: !readable ? "low" : CONFIDENCES.has(rawConf) ? rawConf : "low",
+    confidence: capLow ? "low" : CONFIDENCES.has(rawConf) ? rawConf : "low",
     what_happened: String(judged.what_happened ?? "").slice(0, 2000),
     what_went_right: judged.what_went_right ? String(judged.what_went_right).slice(0, 2000) : "",
     what_went_wrong: judged.what_went_wrong ? String(judged.what_went_wrong).slice(0, 2000) : "",
@@ -291,6 +334,7 @@ export function normalizeAnalysis(
     flagged: Boolean(judged.flagged),
     readable,
     observations: normalizeObservations(observation.observations),
+    tracked_player_found: trackedFound,
   };
 }
 
@@ -319,5 +363,5 @@ export async function runPossessionAnalysis(params: {
   );
   const judged = parseModelJson<JudgeResponse>(judgeRaw);
 
-  return normalizeAnalysis(obs, judged);
+  return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));
 }

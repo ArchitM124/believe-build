@@ -67,6 +67,7 @@ type Case = {
   team_color?: string;
   attack_direction?: string;
   duration_seconds?: number;
+  tracked_player?: string; // e.g. "white #23" — personal-coaching mode
   truth?: string; // one sentence: what actually happened
   expected_outcome?: string; // one of the outcome enums, for scoring
 };
@@ -150,7 +151,7 @@ async function runViaGemini(params: {
     0.2,
   );
   const judged = parseModelJson<JudgeResponse>(judgeRaw);
-  return normalizeAnalysis(obs, judged);
+  return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));
 }
 
 async function main() {
@@ -201,6 +202,7 @@ async function main() {
       teamColor: c.team_color ?? null,
       attackDirection: c.attack_direction ?? null,
       durationSec: c.duration_seconds ?? null,
+      trackedPlayer: c.tracked_player ?? null,
     };
 
     process.stdout.write(`▶ ${c.id} … `);
@@ -240,8 +242,14 @@ async function main() {
     );
     if (c.truth) console.log(`   truth: ${c.truth}`);
     console.log(`   said : ${r.what_happened}`);
+    if (c.tracked_player) {
+      if (r.what_went_right) console.log(`   +you : ${r.what_went_right}`);
+      if (r.what_went_wrong) console.log(`   -you : ${r.what_went_wrong}`);
+      if (r.alternative) console.log(`   next : ${r.alternative}`);
+    }
     console.log(
-      `   conf : ${r.confidence}  readable=${r.readable}  observations=${r.observations.length}`,
+      `   conf : ${r.confidence}  readable=${r.readable}  observations=${r.observations.length}` +
+        (c.tracked_player ? `  tracked="${c.tracked_player}" found=${r.tracked_player_found}` : ""),
     );
 
     results.push({
@@ -253,6 +261,8 @@ async function main() {
       readable: r.readable,
       truth: c.truth ?? null,
       what_happened: r.what_happened,
+      tracked_player: c.tracked_player ?? null,
+      tracked_player_found: r.tracked_player_found,
       what_went_right: r.what_went_right,
       what_went_wrong: r.what_went_wrong,
       alternative: r.alternative,

@@ -4,6 +4,8 @@ import {
   normalizeObservations,
   normalizeAnalysis,
   runPossessionAnalysis,
+  observeUserText,
+  judgeUserText,
 } from "./possession-analysis.core";
 
 const realFetch = globalThis.fetch;
@@ -80,6 +82,43 @@ test("normalizeAnalysis forces low confidence when the clip is unreadable", () =
   // Even if the judge pass sounds certain, an unreadable clip can't be trusted.
   const r = normalizeAnalysis({ readable: false }, { outcome: "made_shot", confidence: "high" });
   expect(r.confidence).toBe("low");
+});
+
+// ---- player tracking ------------------------------------------------------
+
+test("tracked_player_found is null when tracking was not requested", () => {
+  const r = normalizeAnalysis({ tracked_player_found: true }, { outcome: "made_shot" });
+  expect(r.tracked_player_found).toBe(null);
+});
+
+test("tracked_player_found passes through when tracking was requested", () => {
+  expect(normalizeAnalysis({ tracked_player_found: true }, {}, true).tracked_player_found).toBe(
+    true,
+  );
+  expect(normalizeAnalysis({ tracked_player_found: false }, {}, true).tracked_player_found).toBe(
+    false,
+  );
+  // Model omitted the field entirely — unknown, not false.
+  expect(normalizeAnalysis({}, {}, true).tracked_player_found).toBe(null);
+});
+
+test("personal coaching for an unfound player is forced to low confidence", () => {
+  const r = normalizeAnalysis(
+    { readable: true, tracked_player_found: false },
+    { outcome: "made_shot", confidence: "high" },
+    true,
+  );
+  expect(r.confidence).toBe("low");
+});
+
+test("prompts include tracking instructions only when a player is set", () => {
+  const withPlayer = { role: "player", trackedPlayer: "white #23" };
+  const without = { role: "player" };
+  expect(observeUserText(withPlayer)).toContain("white #23");
+  expect(observeUserText(withPlayer)).toContain("TRACKED PLAYER");
+  expect(observeUserText(without)).not.toContain("TRACKED PLAYER");
+  expect(judgeUserText(withPlayer, {})).toContain("PERSONAL COACHING MODE");
+  expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
 });
 
 test("normalizeAnalysis caps long text fields at 2000 chars", () => {

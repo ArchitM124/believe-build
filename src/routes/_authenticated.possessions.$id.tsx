@@ -42,6 +42,7 @@ type Play = {
   video_path: string | null;
   duration_seconds: number | null;
   share_id: string;
+  tracked_player: string | null;
   updated_at: string;
   created_at: string;
 };
@@ -165,6 +166,11 @@ function PossessionDetail() {
           <Badge variant="secondary" className="text-[10px] uppercase">
             {play.uploader_role}
           </Badge>
+          {play.tracked_player && (
+            <Badge variant="outline" className="text-[10px]">
+              Focus: {play.tracked_player}
+            </Badge>
+          )}
           {play.flagged && (
             <span className="inline-flex items-center gap-1 text-xs text-primary">
               <Flag className="h-3 w-3" /> flagged

@@ -27,6 +27,7 @@ export type Database = {
           status: Database["public"]["Enums"]["possession_status"];
           team_color: string | null;
           title: string | null;
+          tracked_player: string | null;
           updated_at: string;
           uploader_role: Database["public"]["Enums"]["uploader_role"];
           user_id: string | null;
@@ -53,6 +54,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["possession_status"];
           team_color?: string | null;
           title?: string | null;
+          tracked_player?: string | null;
           updated_at?: string;
           uploader_role?: Database["public"]["Enums"]["uploader_role"];
           user_id?: string | null;
@@ -79,6 +81,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["possession_status"];
           team_color?: string | null;
           title?: string | null;
+          tracked_player?: string | null;
           updated_at?: string;
           uploader_role?: Database["public"]["Enums"]["uploader_role"];
           user_id?: string | null;
