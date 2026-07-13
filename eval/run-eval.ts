@@ -68,6 +68,7 @@ type Case = {
   attack_direction?: string;
   duration_seconds?: number;
   tracked_player?: string; // e.g. "white #23" — personal-coaching mode
+  declared_outcome?: string; // uploader-declared result — anchoring mode
   truth?: string; // one sentence: what actually happened
   expected_outcome?: string; // one of the outcome enums, for scoring
 };
@@ -203,6 +204,7 @@ async function main() {
       attackDirection: c.attack_direction ?? null,
       durationSec: c.duration_seconds ?? null,
       trackedPlayer: c.tracked_player ?? null,
+      declaredOutcome: c.declared_outcome ?? null,
     };
 
     process.stdout.write(`▶ ${c.id} … `);

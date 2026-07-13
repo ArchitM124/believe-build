@@ -287,6 +287,10 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
         team_color: (fd.get("team_color") as string)?.trim() || null,
         attack_direction: (fd.get("attack_direction") as string) || "unclear",
         tracked_player: (fd.get("tracked_player") as string)?.trim() || null,
+        declared_outcome:
+          ((fd.get("declared_outcome") as string) || "unsure") === "unsure"
+            ? null
+            : (fd.get("declared_outcome") as string),
         duration_seconds: duration,
         status: "uploading",
       })
@@ -426,6 +430,27 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
                   <SelectItem value="unclear">Not sure</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>What was the result? (optional — big accuracy boost)</Label>
+              <Select name="declared_outcome" defaultValue="unsure">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unsure">Let the AI figure it out</SelectItem>
+                  <SelectItem value="made_shot">Made shot</SelectItem>
+                  <SelectItem value="missed_shot">Missed shot</SelectItem>
+                  <SelectItem value="turnover">Turnover</SelectItem>
+                  <SelectItem value="foul">Foul</SelectItem>
+                  <SelectItem value="defensive_stop">Defensive stop (we were on D)</SelectItem>
+                  <SelectItem value="defensive_breakdown">Got scored on (we were on D)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                If you tell us how the play ended, the AI focuses on finding and explaining that
+                moment — anything after it is treated as dead ball.
+              </p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="tracked_player">Focus on one player (optional)</Label>

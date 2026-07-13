@@ -131,6 +131,18 @@ test("prompts include tracking instructions only when a player is set", () => {
   expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
 });
 
+test("declared outcome anchors both prompts and forbids fabrication", () => {
+  const declared = { role: "coach", declaredOutcome: "turnover" };
+  const without = { role: "coach" };
+  expect(observeUserText(declared)).toContain("DECLARED RESULT");
+  expect(observeUserText(declared)).toContain("a turnover");
+  expect(observeUserText(declared)).toContain("do NOT invent one");
+  expect(observeUserText(without)).not.toContain("DECLARED RESULT");
+  expect(judgeUserText(declared, {})).toContain('set "outcome" to exactly "turnover"');
+  expect(judgeUserText(declared, {})).toContain("NEVER fabricate");
+  expect(judgeUserText(without, {})).not.toContain("DECLARED RESULT MODE");
+});
+
 test("normalizeAnalysis caps long text fields at 2000 chars", () => {
   const long = "a".repeat(5000);
   const r = normalizeAnalysis({}, { outcome: "made_shot", what_happened: long });

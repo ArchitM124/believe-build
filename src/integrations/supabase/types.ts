@@ -14,6 +14,7 @@ export type Database = {
           attack_direction: string | null;
           confidence: Database["public"]["Enums"]["confidence_level"];
           created_at: string;
+          declared_outcome: string | null;
           duration_seconds: number | null;
           end_seconds: number | null;
           error: string | null;
@@ -41,6 +42,7 @@ export type Database = {
           attack_direction?: string | null;
           confidence?: Database["public"]["Enums"]["confidence_level"];
           created_at?: string;
+          declared_outcome?: string | null;
           duration_seconds?: number | null;
           end_seconds?: number | null;
           error?: string | null;
@@ -68,6 +70,7 @@ export type Database = {
           attack_direction?: string | null;
           confidence?: Database["public"]["Enums"]["confidence_level"];
           created_at?: string;
+          declared_outcome?: string | null;
           duration_seconds?: number | null;
           end_seconds?: number | null;
           error?: string | null;

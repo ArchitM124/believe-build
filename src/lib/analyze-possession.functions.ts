@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { runPossessionAnalysis } from "@/lib/possession-analysis.core";
+import { runPossessionAnalysis, isOutcome } from "@/lib/possession-analysis.core";
 import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
 const InputSchema = z.object({ possessionId: z.string().uuid() });
@@ -108,6 +108,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
           attackDirection: play.attack_direction,
           durationSec: play.duration_seconds ?? 0,
           trackedPlayer: play.tracked_player,
+          declaredOutcome: play.declared_outcome,
         },
       });
     } catch (e) {
@@ -120,7 +121,9 @@ export const analyzePossession = createServerFn({ method: "POST" })
     const { error: uErr } = await supabase
       .from("plays")
       .update({
-        outcome: result.outcome,
+        // A user-declared result is ground truth — it wins over the model's
+        // classification regardless of what the judge returned.
+        outcome: isOutcome(play.declared_outcome) ? play.declared_outcome : result.outcome,
         confidence: result.confidence,
         what_happened: result.what_happened,
         what_went_right: result.what_went_right || null,

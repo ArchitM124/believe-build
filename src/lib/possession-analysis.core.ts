@@ -35,6 +35,22 @@ export type AnalysisContext = {
    * the left corner". Null/empty = analyze the whole team.
    */
   trackedPlayer?: string | null;
+  /**
+   * Uploader-declared result (an Outcome enum value, e.g. "turnover"). Treated
+   * as fact: the AI locates/explains that event instead of guessing the
+   * outcome, and everything after it is dead ball. Null = AI classifies.
+   */
+  declaredOutcome?: string | null;
+};
+
+const OUTCOME_PHRASE: Record<string, string> = {
+  made_shot: "a made shot",
+  missed_shot: "a missed shot",
+  turnover: "a turnover",
+  foul: "a foul",
+  defensive_stop: "a defensive stop",
+  defensive_breakdown: "a defensive breakdown",
+  other: "an unclear result",
 };
 
 export type Observation = { t: string; desc: string; certain: boolean };
@@ -77,6 +93,10 @@ const OUTCOMES = new Set<Outcome>([
   "other",
 ]);
 const CONFIDENCES = new Set<Confidence>(["low", "medium", "high"]);
+
+export function isOutcome(v: unknown): v is Outcome {
+  return typeof v === "string" && OUTCOMES.has(v as Outcome);
+}
 
 type GatewayMessage = {
   role: "system" | "user";
@@ -154,6 +174,13 @@ function contextBlock(ctx: AnalysisContext): string {
     ...(ctx.trackedPlayer?.trim()
       ? [`TRACKED PLAYER (coach this one player personally): ${ctx.trackedPlayer.trim()}`]
       : []),
+    ...(ctx.declaredOutcome?.trim()
+      ? [
+          `DECLARED RESULT (stated by the uploader — treat as fact): this possession ended in ${
+            OUTCOME_PHRASE[ctx.declaredOutcome.trim()] ?? ctx.declaredOutcome.trim()
+          }.`,
+        ]
+      : []),
     `Uploader title: ${ctx.title?.trim() || "(none)"}`,
     `Uploader notes: ${ctx.notes?.trim() || "(none)"}`,
     `Clip duration: ~${ctx.durationSec ?? "unknown"}s`,
@@ -181,6 +208,12 @@ Hard rules:
 - PLAY-STOPPAGE SIGNALS: watch for signs the play went DEAD mid-clip — most players simultaneously stopping, relaxing, or reversing direction; defenders no longer contesting; the ball casually retrieved or walked back. Record any such signal as its own observation with a timestamp. A basket scored uncontested AFTER such a signal is likely a dead-ball shot (players often finish anyway after a whistle or out-of-bounds) — note that explicitly rather than reporting it as the possession's result.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
+  const declared = ctx.declaredOutcome?.trim();
+  const declaredRules = declared
+    ? `
+
+DECLARED RESULT: the uploader states this possession ended in ${OUTCOME_PHRASE[declared] ?? declared}. Your job includes LOCATING that event: find the moment it happens and observe it in detail (who, where, how it happened). Everything AFTER that moment is dead ball — note it only as post-play, never as the result. If you cannot find any moment matching the declared result, record an explicit observation saying you could not see it — do NOT invent one to match the declaration.`
+    : "";
   const tracked = ctx.trackedPlayer?.trim();
   const trackingRules = tracked
     ? `
@@ -189,7 +222,7 @@ TRACKED PLAYER: "${tracked}". Locate this player using the description (jersey n
     : "";
   return `Observe this single basketball possession. Report only what you can see.
 
-${contextBlock(ctx)}${trackingRules}
+${contextBlock(ctx)}${declaredRules}${trackingRules}
 
 Return ONLY valid JSON — no prose, no markdown fences:
 {
@@ -257,6 +290,12 @@ Role awareness — judge every player against their APPARENT ROLE in the action,
 - If the possession was executed fine, SAY SO — leave what_went_wrong empty rather than inventing a critique.`;
 
 export function judgeUserText(ctx: AnalysisContext, observation: ObservationResponse): string {
+  const declared = ctx.declaredOutcome?.trim();
+  const declaredJudgeRules = declared
+    ? `
+
+DECLARED RESULT MODE: the uploader states the possession ended in ${OUTCOME_PHRASE[declared] ?? declared} — set "outcome" to exactly "${declared}". Anchor the entire analysis on the located event; anything the log marks as after it is dead ball and must not shape the critique. If the log says the event could not be seen, keep the declared outcome but set confidence "low" and say plainly that the moment could not be identified on video — NEVER fabricate details of an event the log does not contain.`
+    : "";
   const tracked = ctx.trackedPlayer?.trim();
   const personalRules = tracked
     ? `
@@ -268,7 +307,7 @@ PERSONAL COACHING MODE for the tracked player ("${tracked}"):
     : "";
   return `Here is the verified observation log for one possession.
 
-${contextBlock(ctx)}${personalRules}
+${contextBlock(ctx)}${declaredJudgeRules}${personalRules}
 
 Observation log (JSON):
 ${JSON.stringify(
