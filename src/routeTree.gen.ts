@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
+import { Route as AuthenticatedRatingRouteImport } from './routes/_authenticated.rating'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedPossessionsIdRouteImport } from './routes/_authenticated.possessions.$id'
 
@@ -35,6 +36,11 @@ const ShareShareIdRoute = ShareShareIdRouteImport.update({
   path: '/share/$shareId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRatingRoute = AuthenticatedRatingRouteImport.update({
+  id: '/rating',
+  path: '/rating',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/rating': typeof AuthenticatedRatingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/possessions/$id': typeof AuthenticatedPossessionsIdRoute
 }
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/rating': typeof AuthenticatedRatingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/possessions/$id': typeof AuthenticatedPossessionsIdRoute
 }
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/rating': typeof AuthenticatedRatingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/_authenticated/possessions/$id': typeof AuthenticatedPossessionsIdRoute
 }
@@ -76,16 +85,24 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/rating'
     | '/share/$shareId'
     | '/possessions/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/share/$shareId' | '/possessions/$id'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/rating'
+    | '/share/$shareId'
+    | '/possessions/$id'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/dashboard'
+    | '/_authenticated/rating'
     | '/share/$shareId'
     | '/_authenticated/possessions/$id'
   fileRoutesById: FileRoutesById
@@ -127,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShareShareIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/rating': {
+      id: '/_authenticated/rating'
+      path: '/rating'
+      fullPath: '/rating'
+      preLoaderRoute: typeof AuthenticatedRatingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -146,11 +170,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedRatingRoute: typeof AuthenticatedRatingRoute
   AuthenticatedPossessionsIdRoute: typeof AuthenticatedPossessionsIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedRatingRoute: AuthenticatedRatingRoute,
   AuthenticatedPossessionsIdRoute: AuthenticatedPossessionsIdRoute,
 }
 

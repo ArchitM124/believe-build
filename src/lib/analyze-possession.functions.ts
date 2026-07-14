@@ -47,11 +47,20 @@ export const analyzePossession = createServerFn({ method: "POST" })
 
     await supabase.from("plays").update({ status: "processing", error: null }).eq("id", play.id);
 
-    const apiKey = process.env.LOVABLE_API_KEY;
+    // Provider selection: a GEMINI_API_KEY (your own Google key, direct API,
+    // Gemini 2.5 Pro) takes priority; otherwise fall back to the Lovable
+    // gateway. AI_MODEL overrides the per-provider default model.
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
+    const provider = geminiKey ? ("gemini" as const) : ("lovable" as const);
+    const apiKey = geminiKey ?? lovableKey;
     if (!apiKey) {
       await supabase
         .from("plays")
-        .update({ status: "failed", error: "LOVABLE_API_KEY not configured" })
+        .update({
+          status: "failed",
+          error: "No AI key configured (set GEMINI_API_KEY or LOVABLE_API_KEY)",
+        })
         .eq("id", play.id);
       throw new Error("AI is not configured on this server");
     }
@@ -100,6 +109,8 @@ export const analyzePossession = createServerFn({ method: "POST" })
       result = await runPossessionAnalysis({
         videoDataUrl,
         apiKey,
+        provider,
+        model: process.env.AI_MODEL || undefined,
         context: {
           role: play.uploader_role ?? "coach",
           title: play.title,
@@ -129,6 +140,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
         what_went_right: result.what_went_right || null,
         what_went_wrong: result.what_went_wrong || null,
         alternative: result.alternative || null,
+        player_stats: result.player_stats,
         flagged: result.flagged,
         start_seconds: 0,
         end_seconds: play.duration_seconds ?? 0,

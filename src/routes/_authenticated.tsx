@@ -36,6 +36,12 @@ function AuthLayout() {
             <span className="font-semibold tracking-tight">PlayIQ</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link
+              to="/rating"
+              className="text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              My rating
+            </Link>
             <span className="hidden text-xs text-muted-foreground sm:inline">{user.email}</span>
             <Button
               variant="ghost"

@@ -78,10 +78,30 @@ export type AnalysisResult = {
   observations: Observation[];
   /** true/false when a tracked player was requested; null when not requested. */
   tracked_player_found: boolean | null;
+  /** Countable events for the tracked player; null when not tracking. */
+  player_stats: PlayerStats | null;
 };
 
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-pro";
+/**
+ * Which AI transport to use. "lovable" routes through the Lovable AI gateway
+ * (their key/credits). "gemini" calls Google's API directly with YOUR key —
+ * set GEMINI_API_KEY in the server env and the app switches over.
+ */
+export type Provider = "lovable" | "gemini";
+
+const LOVABLE_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const DEFAULT_MODEL: Record<Provider, string> = {
+  lovable: "google/gemini-2.5-pro",
+  gemini: "gemini-2.5-pro",
+};
+
+type VideoPart = { dataUrl: string; mimeType: string; base64: string };
+
+function parseDataUrl(videoDataUrl: string): VideoPart {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(videoDataUrl);
+  if (!m) throw new Error("Invalid video data URL");
+  return { dataUrl: videoDataUrl, mimeType: m[1], base64: m[2] };
+}
 
 const OUTCOMES = new Set<Outcome>([
   "made_shot",
@@ -98,57 +118,110 @@ export function isOutcome(v: unknown): v is Outcome {
   return typeof v === "string" && OUTCOMES.has(v as Outcome);
 }
 
-type GatewayMessage = {
-  role: "system" | "user";
-  content:
-    | string
-    | Array<
-        | { type: "text"; text: string }
-        | { type: "file"; file: { filename: string; file_data: string } }
-      >;
-};
+export type ModelConfig = { provider: Provider; apiKey: string; model?: string };
 
-async function callGateway(
-  apiKey: string,
-  messages: GatewayMessage[],
+/**
+ * One JSON-mode model call over either transport. Retries brief server blips
+ * (500/503) twice; rate limits and auth errors surface immediately with
+ * user-readable messages. 90s timeout so a hung request can't outlive the
+ * serverless wall-clock and leave a row stuck 'processing'.
+ */
+async function callModel(
+  cfg: ModelConfig,
+  systemText: string,
+  userText: string,
+  video: VideoPart | null,
   temperature: number,
 ): Promise<string> {
-  let res: Response;
-  try {
-    res = await fetch(GATEWAY_URL, {
+  const model = cfg.model ?? DEFAULT_MODEL[cfg.provider];
+
+  const doFetch = (): Promise<Response> => {
+    if (cfg.provider === "gemini") {
+      const parts: Array<Record<string, unknown>> = [{ text: userText }];
+      if (video) {
+        parts.push({ inline_data: { mime_type: video.mimeType, data: video.base64 } });
+      }
+      return fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cfg.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemText }] },
+            contents: [{ role: "user", parts }],
+            generationConfig: { temperature, responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(90_000),
+        },
+      );
+    }
+    const content: Array<Record<string, unknown>> = [{ type: "text", text: userText }];
+    if (video) {
+      content.push({
+        type: "file",
+        file: { filename: "possession.mp4", file_data: video.dataUrl },
+      });
+    }
+    return fetch(LOVABLE_GATEWAY_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         temperature,
-        messages,
+        messages: [
+          { role: "system", content: systemText },
+          { role: "user", content },
+        ],
         response_format: { type: "json_object" },
       }),
-      // Bound each call so a hung request can't outlive the serverless
-      // wall-clock and leave the row stuck 'processing' forever.
       signal: AbortSignal.timeout(90_000),
     });
-  } catch (e) {
-    if (e instanceof Error && e.name === "TimeoutError") {
-      throw new Error("AI timed out on this clip — try trimming it to a shorter possession");
+  };
+
+  let res: Response;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await doFetch();
+    } catch (e) {
+      if (e instanceof Error && e.name === "TimeoutError") {
+        throw new Error("AI timed out on this clip — try trimming it to a shorter possession");
+      }
+      throw e;
     }
-    throw e;
+    if (res.ok || attempt >= 3 || ![500, 503].includes(res.status)) break;
+    await new Promise((r) => setTimeout(r, attempt * 2000));
   }
 
   if (res.status === 429) throw new Error("Rate limit reached — try again in a minute");
   if (res.status === 402) throw new Error("AI credits exhausted — top up Lovable AI to continue");
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`AI gateway error ${res.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`AI error ${res.status}: ${errText.slice(0, 200)}`);
   }
 
+  if (cfg.provider === "gemini") {
+    const json = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    return json?.candidates?.[0]?.content?.parts?.map((p) => p?.text ?? "").join("") || "{}";
+  }
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   return json?.choices?.[0]?.message?.content ?? "{}";
+}
+
+/** Text-only JSON generation over either provider (used for scouting reports). */
+export async function generateStructuredJson(params: {
+  config: ModelConfig;
+  system: string;
+  user: string;
+  temperature?: number;
+}): Promise<string> {
+  return callModel(params.config, params.system, params.user, null, params.temperature ?? 0.3);
 }
 
 export function parseModelJson<T>(content: string): T {
@@ -235,16 +308,6 @@ Return ONLY valid JSON — no prose, no markdown fences:
 }`;
 }
 
-function observeUser(ctx: AnalysisContext, videoDataUrl: string): GatewayMessage {
-  return {
-    role: "user",
-    content: [
-      { type: "text", text: observeUserText(ctx) },
-      { type: "file", file: { filename: "possession.mp4", file_data: videoDataUrl } },
-    ],
-  };
-}
-
 // ---- Pass 2: coaching analysis grounded in Pass 1 -----------------------
 
 export type JudgeResponse = {
@@ -255,6 +318,27 @@ export type JudgeResponse = {
   alternative?: string;
   confidence?: string;
   flagged?: boolean;
+  player_stats?: {
+    involved?: unknown;
+    shot?: unknown;
+    turnover?: unknown;
+    good_reads?: unknown;
+    bad_decisions?: unknown;
+    defense?: unknown;
+  };
+};
+
+/**
+ * Countable events for the tracked player in ONE possession. These feed the
+ * rating engine — the model counts, code computes the numbers.
+ */
+export type PlayerStats = {
+  involved: boolean;
+  shot: "made" | "missed" | "none";
+  turnover: boolean;
+  good_reads: number; // 0–3
+  bad_decisions: number; // 0–3
+  defense: "positive" | "neutral" | "negative" | "na";
 };
 
 export const JUDGE_SYSTEM = `You are PlayIQ, an elite basketball film-study analyst. You are given a VERIFIED observation log from a single possession. You did NOT watch the video yourself — build your entire analysis STRICTLY from the log.
@@ -329,12 +413,20 @@ Return ONLY valid JSON matching this exact type — no prose, no markdown fences
   "what_went_wrong": string,   // The breakdown: WHO (by color), WHERE, WHAT, and WHY — only if the log supports it. "" if unclear.
   "alternative": string,       // RIGHT-PLAY analysis (up to 4 sentences): best REAL option per the log's decision snapshots + the exact technique to execute it. If the decision was right, coach the execution. Never propose options the log doesn't show. "" only if truly nothing to coach.
   "confidence": "low"|"medium"|"high",  // "high" ONLY if the log is dense and mostly certain.
-  "flagged": boolean           // true if this is a strong, clear teaching moment.
+  "flagged": boolean${
+    tracked
+      ? `,           // true if this is a strong, clear teaching moment.
+  "player_stats": {            // Count ONLY the tracked player's events in THIS possession, grounded in the log. Be strict: no event in the log = don't count it.
+    "involved": boolean,       // did they meaningfully participate (touch, screen, contest, rotation)?
+    "shot": "made"|"missed"|"none",
+    "turnover": boolean,       // did THEY commit a turnover?
+    "good_reads": 0|1|2|3,     // correct decisions the log supports (right pass, good cut, correct rotation)
+    "bad_decisions": 0|1|2|3,  // clear mistakes the log supports (forced shot, blown assignment, lazy pass)
+    "defense": "positive"|"neutral"|"negative"|"na"  // their defensive impact this possession; "na" if their team wasn't defending
+  }`
+      : "           // true if this is a strong, clear teaching moment."
+  }
 }`;
-}
-
-function judgeUser(ctx: AnalysisContext, observation: ObservationResponse): GatewayMessage {
-  return { role: "user", content: [{ type: "text", text: judgeUserText(ctx, observation) }] };
 }
 
 // ---- Pure normalization (validated + clamped; unit-tested) --------------
@@ -383,6 +475,27 @@ export function normalizeAnalysis(
     readable,
     observations: normalizeObservations(observation.observations),
     tracked_player_found: trackedFound,
+    player_stats: trackingRequested ? normalizePlayerStats(judged.player_stats) : null,
+  };
+}
+
+const SHOT_VALUES = new Set(["made", "missed", "none"]);
+const DEFENSE_VALUES = new Set(["positive", "neutral", "negative", "na"]);
+
+/** Clamp the judge's loose stat block into a typed PlayerStats (or null). */
+export function normalizePlayerStats(raw: JudgeResponse["player_stats"]): PlayerStats | null {
+  if (!raw || typeof raw !== "object") return null;
+  const clampCount = (v: unknown) =>
+    Math.max(0, Math.min(3, Math.round(typeof v === "number" ? v : Number(v) || 0)));
+  const shot = String(raw.shot ?? "none");
+  const defense = String(raw.defense ?? "na");
+  return {
+    involved: Boolean(raw.involved),
+    shot: (SHOT_VALUES.has(shot) ? shot : "none") as PlayerStats["shot"],
+    turnover: Boolean(raw.turnover),
+    good_reads: clampCount(raw.good_reads),
+    bad_decisions: clampCount(raw.bad_decisions),
+    defense: (DEFENSE_VALUES.has(defense) ? defense : "na") as PlayerStats["defense"],
   };
 }
 
@@ -392,23 +505,25 @@ export async function runPossessionAnalysis(params: {
   videoDataUrl: string;
   apiKey: string;
   context: AnalysisContext;
+  /** "lovable" (default, gateway credits) or "gemini" (direct, your key). */
+  provider?: Provider;
+  /** Optional model override; sensible per-provider default otherwise. */
+  model?: string;
 }): Promise<AnalysisResult> {
   const { videoDataUrl, apiKey, context } = params;
+  const cfg: ModelConfig = {
+    provider: params.provider ?? "lovable",
+    apiKey,
+    model: params.model,
+  };
+  const video = parseDataUrl(videoDataUrl);
 
   // Pass 1 — watch and observe (low temperature: stay literal).
-  const obsRaw = await callGateway(
-    apiKey,
-    [{ role: "system", content: OBSERVE_SYSTEM }, observeUser(context, videoDataUrl)],
-    0.15,
-  );
+  const obsRaw = await callModel(cfg, OBSERVE_SYSTEM, observeUserText(context), video, 0.15);
   const obs = parseModelJson<ObservationResponse>(obsRaw);
 
   // Pass 2 — coach the play from the log only (no video, slightly warmer).
-  const judgeRaw = await callGateway(
-    apiKey,
-    [{ role: "system", content: JUDGE_SYSTEM }, judgeUser(context, obs)],
-    0.2,
-  );
+  const judgeRaw = await callModel(cfg, JUDGE_SYSTEM, judgeUserText(context, obs), null, 0.2);
   const judged = parseModelJson<JudgeResponse>(judgeRaw);
 
   return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));

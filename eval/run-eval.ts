@@ -19,16 +19,8 @@ import { resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   runPossessionAnalysis,
-  normalizeAnalysis,
-  parseModelJson,
-  observeUserText,
-  judgeUserText,
-  OBSERVE_SYSTEM,
-  JUDGE_SYSTEM,
   type AnalysisContext,
-  type AnalysisResult,
-  type ObservationResponse,
-  type JudgeResponse,
+  type Provider,
 } from "../src/lib/possession-analysis.core";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -73,86 +65,11 @@ type Case = {
   expected_outcome?: string; // one of the outcome enums, for scoring
 };
 
-// Production uses gemini-2.5-pro. Override with GEMINI_MODEL (e.g.
-// gemini-2.5-flash, which is on Google's free tier) for a no-cost run.
-function geminiModel(): string {
-  return process.env.GEMINI_MODEL || "gemini-2.5-pro";
-}
-
-/**
- * Gemini-direct fallback: runs the SAME two-pass prompts as production
- * (imported from the core) against Google's native API, so the eval works
- * with a free Google AI Studio key when the Lovable key isn't handy. Only the
- * HTTP transport differs; the model, prompts, and normalization are identical.
- */
-async function callGeminiJson(
-  apiKey: string,
-  systemText: string,
-  userText: string,
-  inlineVideo: { mimeType: string; base64: string } | null,
-  temperature: number,
-): Promise<string> {
-  const parts: Array<Record<string, unknown>> = [{ text: userText }];
-  if (inlineVideo) {
-    parts.push({ inline_data: { mime_type: inlineVideo.mimeType, data: inlineVideo.base64 } });
-  }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel()}:generateContent?key=${apiKey}`;
-  const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: systemText }] },
-    contents: [{ role: "user", parts }],
-    generationConfig: { temperature, responseMimeType: "application/json" },
-  });
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  let lastErr = "";
-  // Retry transient errors (fresh-project API-enablement propagation, rate limits).
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    });
-    if (res.ok) {
-      const json = (await res.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-      return json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    }
-    const errText = await res.text().catch(() => "");
-    lastErr = `Gemini error ${res.status}: ${errText.slice(0, 160)}`;
-    if ([403, 429, 500, 503].includes(res.status) && attempt < 5) {
-      await sleep(attempt * 8000); // 8s, 16s, 24s, 32s
-      continue;
-    }
-    throw new Error(lastErr);
-  }
-  throw new Error(lastErr);
-}
-
-async function runViaGemini(params: {
-  base64: string;
-  mimeType: string;
-  apiKey: string;
-  context: AnalysisContext;
-}): Promise<AnalysisResult> {
-  const { base64, mimeType, apiKey, context } = params;
-  const obsRaw = await callGeminiJson(
-    apiKey,
-    OBSERVE_SYSTEM,
-    observeUserText(context),
-    { mimeType, base64 },
-    0.15,
-  );
-  const obs = parseModelJson<ObservationResponse>(obsRaw);
-  const judgeRaw = await callGeminiJson(
-    apiKey,
-    JUDGE_SYSTEM,
-    judgeUserText(context, obs),
-    null,
-    0.2,
-  );
-  const judged = parseModelJson<JudgeResponse>(judgeRaw);
-  return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));
+// The eval uses the EXACT production pipeline (possession-analysis.core.ts),
+// including its dual-provider transport. GEMINI_MODEL / AI_MODEL override the
+// per-provider default model (e.g. gemini-flash-lite-latest for free runs).
+function modelOverride(): string | undefined {
+  return process.env.GEMINI_MODEL || process.env.AI_MODEL || undefined;
 }
 
 async function main() {
@@ -172,7 +89,7 @@ async function main() {
     );
     process.exit(1);
   }
-  console.log(`Provider: ${provider}${provider === "gemini" ? ` (${geminiModel()})` : ""}\n`);
+  console.log(`Provider: ${provider}${modelOverride() ? ` (${modelOverride()})` : ""}\n`);
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {
@@ -210,19 +127,13 @@ async function main() {
     process.stdout.write(`▶ ${c.id} … `);
     let r;
     try {
-      r =
-        provider === "lovable"
-          ? await runPossessionAnalysis({
-              videoDataUrl: `data:${mime};base64,${base64}`,
-              apiKey: lovableKey as string,
-              context,
-            })
-          : await runViaGemini({
-              base64,
-              mimeType: mime,
-              apiKey: geminiKey as string,
-              context,
-            });
+      r = await runPossessionAnalysis({
+        videoDataUrl: `data:${mime};base64,${base64}`,
+        apiKey: (provider === "lovable" ? lovableKey : geminiKey) as string,
+        provider: provider as Provider,
+        model: modelOverride(),
+        context,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log(`ERROR: ${msg}`);

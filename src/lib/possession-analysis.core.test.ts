@@ -3,6 +3,7 @@ import {
   parseModelJson,
   normalizeObservations,
   normalizeAnalysis,
+  normalizePlayerStats,
   runPossessionAnalysis,
   observeUserText,
   judgeUserText,
@@ -129,6 +130,80 @@ test("prompts include tracking instructions only when a player is set", () => {
   expect(observeUserText(without)).not.toContain("TRACKED PLAYER");
   expect(judgeUserText(withPlayer, {})).toContain("PERSONAL COACHING MODE");
   expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
+});
+
+test("normalizePlayerStats clamps and defaults the judge's loose stat block", () => {
+  expect(normalizePlayerStats(undefined)).toBe(null);
+  expect(
+    normalizePlayerStats({
+      involved: "yes",
+      shot: "dunked",
+      turnover: 0,
+      good_reads: 7,
+      bad_decisions: -2,
+      defense: "elite",
+    }),
+  ).toEqual({
+    involved: true,
+    shot: "none",
+    turnover: false,
+    good_reads: 3,
+    bad_decisions: 0,
+    defense: "na",
+  });
+});
+
+test("player_stats flows through normalizeAnalysis only when tracking", () => {
+  const judged = {
+    outcome: "made_shot",
+    player_stats: {
+      involved: true,
+      shot: "made",
+      turnover: false,
+      good_reads: 1,
+      bad_decisions: 0,
+      defense: "na",
+    },
+  };
+  expect(normalizeAnalysis({}, judged, true).player_stats?.shot).toBe("made");
+  expect(normalizeAnalysis({}, judged, false).player_stats).toBe(null);
+});
+
+test("judge schema asks for player_stats only in tracking mode", () => {
+  expect(judgeUserText({ role: "player", trackedPlayer: "white #23" }, {})).toContain(
+    '"player_stats"',
+  );
+  expect(judgeUserText({ role: "coach" }, {})).not.toContain('"player_stats"');
+});
+
+test("gemini provider hits Google's API with the right shape", async () => {
+  const urls: string[] = [];
+  const geminiResponse = (obj: unknown): Response =>
+    ({
+      status: 200,
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] }),
+      text: async () => "",
+    }) as unknown as Response;
+  let calls = 0;
+  globalThis.fetch = (async (url: RequestInfo | URL) => {
+    urls.push(String(url));
+    calls++;
+    if (calls === 1) return geminiResponse({ readable: true, observations: [] });
+    return geminiResponse({ outcome: "turnover", confidence: "medium" });
+  }) as unknown as typeof fetch;
+
+  const result = await runPossessionAnalysis({
+    videoDataUrl: "data:video/mp4;base64,AAAA",
+    apiKey: "google-key",
+    provider: "gemini",
+    model: "gemini-2.5-pro",
+    context: { role: "coach" },
+  });
+
+  expect(urls[0]).toContain("generativelanguage.googleapis.com");
+  expect(urls[0]).toContain("gemini-2.5-pro");
+  expect(result.outcome).toBe("turnover");
 });
 
 test("declared outcome anchors both prompts and forbids fabrication", () => {

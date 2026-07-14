@@ -22,6 +22,7 @@ export type Database = {
           id: string;
           notes: string | null;
           outcome: Database["public"]["Enums"]["play_outcome"];
+          player_stats: Json | null;
           possession_index: number | null;
           share_id: string;
           start_seconds: number | null;
@@ -50,6 +51,7 @@ export type Database = {
           id?: string;
           notes?: string | null;
           outcome?: Database["public"]["Enums"]["play_outcome"];
+          player_stats?: Json | null;
           possession_index?: number | null;
           share_id?: string;
           start_seconds?: number | null;
@@ -78,6 +80,7 @@ export type Database = {
           id?: string;
           notes?: string | null;
           outcome?: Database["public"]["Enums"]["play_outcome"];
+          player_stats?: Json | null;
           possession_index?: number | null;
           share_id?: string;
           start_seconds?: number | null;
@@ -113,6 +116,42 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           team_name?: string | null;
+        };
+        Relationships: [];
+      };
+      ratings: {
+        Row: {
+          created_at: string;
+          id: string;
+          overall: number;
+          play_ids: string[];
+          possessions_used: number;
+          report: Json | null;
+          sub_scores: Json;
+          tracked_player: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          overall: number;
+          play_ids: string[];
+          possessions_used: number;
+          report?: Json | null;
+          sub_scores: Json;
+          tracked_player: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          overall?: number;
+          play_ids?: string[];
+          possessions_used?: number;
+          report?: Json | null;
+          sub_scores?: Json;
+          tracked_player?: string;
+          user_id?: string;
         };
         Relationships: [];
       };
