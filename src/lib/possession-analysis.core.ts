@@ -93,13 +93,15 @@ export type AnalysisResult = {
  * Set AI_PROVIDER in the server env to force one; otherwise the first
  * configured key wins in the order gemini → perceptron → qwen → lovable.
  */
-export type Provider = "lovable" | "gemini" | "perceptron" | "qwen";
+export type Provider = "lovable" | "gemini" | "perceptron" | "qwen" | "openrouter";
 
 const DEFAULT_MODEL: Record<Provider, string> = {
   lovable: "google/gemini-2.5-pro",
   gemini: "gemini-2.5-pro",
   perceptron: "perceptron-mk1",
   qwen: "qwen3-vl-plus",
+  // OpenRouter is a gateway; default to Perceptron Mk1 but any slug works.
+  openrouter: "perceptron/perceptron-mk1",
 };
 
 /** Per-provider config for the OpenAI-compatible transports. */
@@ -120,6 +122,11 @@ const OPENAI_COMPAT: Record<
   },
   qwen: {
     url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    videoStyle: "video_url",
+    jsonMode: false,
+  },
+  openrouter: {
+    url: "https://openrouter.ai/api/v1/chat/completions",
     videoStyle: "video_url",
     jsonMode: false,
   },
@@ -153,6 +160,7 @@ export function resolveModelConfig(env: Record<string, string | undefined>): Mod
     gemini: env.GEMINI_API_KEY,
     perceptron: env.PERCEPTRON_API_KEY,
     qwen: env.QWEN_API_KEY || env.DASHSCOPE_API_KEY,
+    openrouter: env.OPENROUTER_API_KEY,
     lovable: env.LOVABLE_API_KEY,
   };
   const forced = env.AI_PROVIDER?.trim().toLowerCase() as Provider | undefined;
@@ -161,7 +169,7 @@ export function resolveModelConfig(env: Record<string, string | undefined>): Mod
     if (!keys[forced]) throw new Error(`AI_PROVIDER is "${forced}" but its API key is not set`);
     return { provider: forced, apiKey: keys[forced], model: env.AI_MODEL || undefined };
   }
-  for (const provider of ["gemini", "perceptron", "qwen", "lovable"] as const) {
+  for (const provider of ["gemini", "perceptron", "qwen", "openrouter", "lovable"] as const) {
     if (keys[provider]) {
       return { provider, apiKey: keys[provider], model: env.AI_MODEL || undefined };
     }
