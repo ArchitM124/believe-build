@@ -5,7 +5,7 @@ import {
   generateStructuredJson,
   parseModelJson,
   normalizePlayerStats,
-  type ModelConfig,
+  resolveModelConfig,
   type PlayerStats,
 } from "@/lib/possession-analysis.core";
 import { computeRating, MIN_POSSESSIONS } from "@/lib/player-rating";
@@ -89,15 +89,8 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
     for (const r of usable) counts.set(r.tracked, (counts.get(r.tracked) ?? 0) + 1);
     const trackedPlayer = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
 
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const lovableKey = process.env.LOVABLE_API_KEY;
-    const apiKey = geminiKey ?? lovableKey;
-    if (!apiKey) throw new Error("AI is not configured on this server");
-    const config: ModelConfig = {
-      provider: geminiKey ? "gemini" : "lovable",
-      apiKey,
-      model: process.env.AI_MODEL || undefined,
-    };
+    const config = resolveModelConfig(process.env);
+    if (!config) throw new Error("AI is not configured on this server");
 
     let report: ScoutingReport;
     try {

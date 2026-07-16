@@ -19,8 +19,8 @@ import { resolve, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   runPossessionAnalysis,
+  resolveModelConfig,
   type AnalysisContext,
-  type Provider,
 } from "../src/lib/possession-analysis.core";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -74,22 +74,31 @@ function modelOverride(): string | undefined {
 
 async function main() {
   loadLocalEnv();
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  const provider: "lovable" | "gemini" | null = lovableKey
-    ? "lovable"
-    : geminiKey
-      ? "gemini"
-      : null;
-  if (!provider) {
+  // GOOGLE_API_KEY is accepted as an alias for GEMINI_API_KEY.
+  if (!process.env.GEMINI_API_KEY && process.env.GOOGLE_API_KEY) {
+    process.env.GEMINI_API_KEY = process.env.GOOGLE_API_KEY;
+  }
+  let config;
+  try {
+    config = resolveModelConfig(process.env);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
+  if (!config) {
     console.error(
-      "No API key found. Put ONE of these in eval/.env:\n" +
-        "  LOVABLE_API_KEY=...   (your app's key — tests the exact production path)\n" +
-        "  GEMINI_API_KEY=...    (free from https://aistudio.google.com/apikey)",
+      "No API key found. Put one (or more) of these in eval/.env:\n" +
+        "  GEMINI_API_KEY=...       (Google, https://aistudio.google.com/apikey)\n" +
+        "  PERCEPTRON_API_KEY=...   (Perceptron Mk1, https://platform.perceptron.inc)\n" +
+        "  QWEN_API_KEY=...         (Alibaba Model Studio / DashScope)\n" +
+        "  LOVABLE_API_KEY=...      (your app's gateway key)\n" +
+        "Force a specific one with AI_PROVIDER=gemini|perceptron|qwen|lovable.",
     );
     process.exit(1);
   }
-  console.log(`Provider: ${provider}${modelOverride() ? ` (${modelOverride()})` : ""}\n`);
+  config = { ...config, model: modelOverride() ?? config.model };
+  const provider = config.provider;
+  console.log(`Provider: ${provider}${config.model ? ` (${config.model})` : ""}\n`);
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {
@@ -129,9 +138,9 @@ async function main() {
     try {
       r = await runPossessionAnalysis({
         videoDataUrl: `data:${mime};base64,${base64}`,
-        apiKey: (provider === "lovable" ? lovableKey : geminiKey) as string,
-        provider: provider as Provider,
-        model: modelOverride(),
+        apiKey: config.apiKey,
+        provider: config.provider,
+        model: config.model,
         context,
       });
     } catch (e) {
@@ -183,7 +192,8 @@ async function main() {
     });
   }
 
-  const outPath = resolve(here, "results.json");
+  // Per-provider results file so bake-off runs don't clobber each other.
+  const outPath = resolve(here, `results.${provider}.json`);
   writeFileSync(outPath, JSON.stringify(results, null, 2));
   console.log(
     `\n— Outcome accuracy: ${graded ? `${correct}/${graded} (${Math.round((100 * correct) / graded)}%)` : "no graded cases"} —`,

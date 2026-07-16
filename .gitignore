@@ -24,7 +24,7 @@ dist-ssr
 # Eval harness — keep footage and answer keys local
 eval/clips/
 eval/cases.json
-eval/results.json
+eval/results*.json
 
 # Wrangler / Cloudflare
 .wrangler/

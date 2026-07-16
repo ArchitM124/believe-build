@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { runPossessionAnalysis, isOutcome } from "@/lib/possession-analysis.core";
+import {
+  runPossessionAnalysis,
+  resolveModelConfig,
+  isOutcome,
+} from "@/lib/possession-analysis.core";
 import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
 const InputSchema = z.object({ possessionId: z.string().uuid() });
@@ -47,19 +51,24 @@ export const analyzePossession = createServerFn({ method: "POST" })
 
     await supabase.from("plays").update({ status: "processing", error: null }).eq("id", play.id);
 
-    // Provider selection: a GEMINI_API_KEY (your own Google key, direct API,
-    // Gemini 2.5 Pro) takes priority; otherwise fall back to the Lovable
-    // gateway. AI_MODEL overrides the per-provider default model.
-    const geminiKey = process.env.GEMINI_API_KEY;
-    const lovableKey = process.env.LOVABLE_API_KEY;
-    const provider = geminiKey ? ("gemini" as const) : ("lovable" as const);
-    const apiKey = geminiKey ?? lovableKey;
-    if (!apiKey) {
+    // Provider selection: AI_PROVIDER forces one; otherwise the first
+    // configured key wins (gemini → perceptron → qwen → lovable). AI_MODEL
+    // overrides the per-provider default model.
+    let modelConfig;
+    try {
+      modelConfig = resolveModelConfig(process.env);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "AI provider misconfigured";
+      await supabase.from("plays").update({ status: "failed", error: msg }).eq("id", play.id);
+      throw new Error(msg);
+    }
+    if (!modelConfig) {
       await supabase
         .from("plays")
         .update({
           status: "failed",
-          error: "No AI key configured (set GEMINI_API_KEY or LOVABLE_API_KEY)",
+          error:
+            "No AI key configured (set GEMINI_API_KEY, PERCEPTRON_API_KEY, QWEN_API_KEY, or LOVABLE_API_KEY)",
         })
         .eq("id", play.id);
       throw new Error("AI is not configured on this server");
@@ -67,6 +76,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
 
     // --- 1) Pull the actual video bytes via a short-lived signed URL ---
     let videoDataUrl: string;
+    let videoRemoteUrl: string | undefined;
     let mimeType = "video/mp4";
     let sizeMB = 0;
     try {
@@ -74,6 +84,7 @@ export const analyzePossession = createServerFn({ method: "POST" })
         .from("game-videos")
         .createSignedUrl(play.video_path, 60 * 5);
       if (sErr || !signed?.signedUrl) throw new Error(sErr?.message ?? "Could not sign video URL");
+      videoRemoteUrl = signed.signedUrl;
 
       const vidRes = await fetch(signed.signedUrl);
       if (!vidRes.ok) throw new Error(`Video download failed: ${vidRes.status}`);
@@ -108,9 +119,10 @@ export const analyzePossession = createServerFn({ method: "POST" })
     try {
       result = await runPossessionAnalysis({
         videoDataUrl,
-        apiKey,
-        provider,
-        model: process.env.AI_MODEL || undefined,
+        videoRemoteUrl,
+        apiKey: modelConfig.apiKey,
+        provider: modelConfig.provider,
+        model: modelConfig.model,
         context: {
           role: play.uploader_role ?? "coach",
           title: play.title,

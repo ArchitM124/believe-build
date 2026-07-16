@@ -83,24 +83,90 @@ export type AnalysisResult = {
 };
 
 /**
- * Which AI transport to use. "lovable" routes through the Lovable AI gateway
- * (their key/credits). "gemini" calls Google's API directly with YOUR key —
- * set GEMINI_API_KEY in the server env and the app switches over.
+ * Which AI transport to use:
+ *  - "lovable": Lovable AI gateway (their key/credits) — the default.
+ *  - "gemini": Google's API directly with your GEMINI_API_KEY.
+ *  - "perceptron": Perceptron Mk1 (video-native, samples up to 2 FPS) with
+ *    your PERCEPTRON_API_KEY.
+ *  - "qwen": Alibaba Qwen3-VL via the DashScope OpenAI-compatible API with
+ *    your QWEN_API_KEY (or DASHSCOPE_API_KEY).
+ * Set AI_PROVIDER in the server env to force one; otherwise the first
+ * configured key wins in the order gemini → perceptron → qwen → lovable.
  */
-export type Provider = "lovable" | "gemini";
+export type Provider = "lovable" | "gemini" | "perceptron" | "qwen";
 
-const LOVABLE_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEFAULT_MODEL: Record<Provider, string> = {
   lovable: "google/gemini-2.5-pro",
   gemini: "gemini-2.5-pro",
+  perceptron: "perceptron-mk1",
+  qwen: "qwen3-vl-plus",
 };
 
-type VideoPart = { dataUrl: string; mimeType: string; base64: string };
+/** Per-provider config for the OpenAI-compatible transports. */
+const OPENAI_COMPAT: Record<
+  Exclude<Provider, "gemini">,
+  { url: string; videoStyle: "file" | "video_url"; jsonMode: boolean }
+> = {
+  lovable: {
+    url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+    videoStyle: "file",
+    jsonMode: true,
+  },
+  perceptron: {
+    url: "https://api.perceptron.inc/v1/chat/completions",
+    videoStyle: "video_url",
+    // JSON mode undocumented — rely on the prompt + fence-stripping parser.
+    jsonMode: false,
+  },
+  qwen: {
+    url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    videoStyle: "video_url",
+    jsonMode: false,
+  },
+};
 
-function parseDataUrl(videoDataUrl: string): VideoPart {
+type VideoPart = {
+  dataUrl: string;
+  mimeType: string;
+  base64: string;
+  /**
+   * Optional short-lived remote URL for the same video (e.g. a Supabase
+   * signed URL). video_url-style providers prefer this over inline base64 —
+   * smaller requests, no inline size ceiling.
+   */
+  remoteUrl?: string;
+};
+
+function parseDataUrl(videoDataUrl: string, remoteUrl?: string): VideoPart {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(videoDataUrl);
   if (!m) throw new Error("Invalid video data URL");
-  return { dataUrl: videoDataUrl, mimeType: m[1], base64: m[2] };
+  return { dataUrl: videoDataUrl, mimeType: m[1], base64: m[2], remoteUrl };
+}
+
+/**
+ * Pick provider + key + model from environment variables (pure — pass in the
+ * env object). AI_PROVIDER forces a provider (error if its key is missing);
+ * otherwise: gemini → perceptron → qwen → lovable, first configured key wins.
+ */
+export function resolveModelConfig(env: Record<string, string | undefined>): ModelConfig | null {
+  const keys: Record<Provider, string | undefined> = {
+    gemini: env.GEMINI_API_KEY,
+    perceptron: env.PERCEPTRON_API_KEY,
+    qwen: env.QWEN_API_KEY || env.DASHSCOPE_API_KEY,
+    lovable: env.LOVABLE_API_KEY,
+  };
+  const forced = env.AI_PROVIDER?.trim().toLowerCase() as Provider | undefined;
+  if (forced) {
+    if (!(forced in keys)) throw new Error(`Unknown AI_PROVIDER "${forced}"`);
+    if (!keys[forced]) throw new Error(`AI_PROVIDER is "${forced}" but its API key is not set`);
+    return { provider: forced, apiKey: keys[forced], model: env.AI_MODEL || undefined };
+  }
+  for (const provider of ["gemini", "perceptron", "qwen", "lovable"] as const) {
+    if (keys[provider]) {
+      return { provider, apiKey: keys[provider], model: env.AI_MODEL || undefined };
+    }
+  }
+  return null;
 }
 
 const OUTCOMES = new Set<Outcome>([
@@ -155,14 +221,24 @@ async function callModel(
         },
       );
     }
+    const compat = OPENAI_COMPAT[cfg.provider];
     const content: Array<Record<string, unknown>> = [{ type: "text", text: userText }];
     if (video) {
-      content.push({
-        type: "file",
-        file: { filename: "possession.mp4", file_data: video.dataUrl },
-      });
+      if (compat.videoStyle === "file") {
+        content.push({
+          type: "file",
+          file: { filename: "possession.mp4", file_data: video.dataUrl },
+        });
+      } else {
+        // video_url providers accept a fetchable URL (preferred: smaller
+        // request, no inline ceiling) or a base64 data URI.
+        content.push({
+          type: "video_url",
+          video_url: { url: video.remoteUrl ?? video.dataUrl },
+        });
+      }
     }
-    return fetch(LOVABLE_GATEWAY_URL, {
+    return fetch(compat.url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${cfg.apiKey}`,
@@ -175,7 +251,7 @@ async function callModel(
           { role: "system", content: systemText },
           { role: "user", content },
         ],
-        response_format: { type: "json_object" },
+        ...(compat.jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),
       signal: AbortSignal.timeout(90_000),
     });
@@ -196,7 +272,12 @@ async function callModel(
   }
 
   if (res.status === 429) throw new Error("Rate limit reached — try again in a minute");
-  if (res.status === 402) throw new Error("AI credits exhausted — top up Lovable AI to continue");
+  if (res.status === 402)
+    throw new Error(
+      cfg.provider === "lovable"
+        ? "AI credits exhausted — top up Lovable AI to continue"
+        : `AI credits exhausted on ${cfg.provider} — check your account balance`,
+    );
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
     throw new Error(`AI error ${res.status}: ${errText.slice(0, 200)}`);
@@ -505,10 +586,16 @@ export async function runPossessionAnalysis(params: {
   videoDataUrl: string;
   apiKey: string;
   context: AnalysisContext;
-  /** "lovable" (default, gateway credits) or "gemini" (direct, your key). */
+  /** Transport: lovable (default) | gemini | perceptron | qwen. */
   provider?: Provider;
   /** Optional model override; sensible per-provider default otherwise. */
   model?: string;
+  /**
+   * Optional short-lived fetchable URL for the same video (e.g. a signed
+   * storage URL). video_url-style providers (perceptron/qwen) use it instead
+   * of inline base64.
+   */
+  videoRemoteUrl?: string;
 }): Promise<AnalysisResult> {
   const { videoDataUrl, apiKey, context } = params;
   const cfg: ModelConfig = {
@@ -516,7 +603,7 @@ export async function runPossessionAnalysis(params: {
     apiKey,
     model: params.model,
   };
-  const video = parseDataUrl(videoDataUrl);
+  const video = parseDataUrl(videoDataUrl, params.videoRemoteUrl);
 
   // Pass 1 — watch and observe (low temperature: stay literal).
   const obsRaw = await callModel(cfg, OBSERVE_SYSTEM, observeUserText(context), video, 0.15);

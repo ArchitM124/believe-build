@@ -5,6 +5,7 @@ import {
   normalizeAnalysis,
   normalizePlayerStats,
   runPossessionAnalysis,
+  resolveModelConfig,
   observeUserText,
   judgeUserText,
 } from "./possession-analysis.core";
@@ -204,6 +205,100 @@ test("gemini provider hits Google's API with the right shape", async () => {
   expect(urls[0]).toContain("generativelanguage.googleapis.com");
   expect(urls[0]).toContain("gemini-2.5-pro");
   expect(result.outcome).toBe("turnover");
+});
+
+test("perceptron/qwen send video_url (preferring a remote URL) without json mode", async () => {
+  const captured: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const openaiResponse = (obj: unknown): Response =>
+    ({
+      status: 200,
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(obj) } }] }),
+      text: async () => "",
+    }) as unknown as Response;
+  let calls = 0;
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    captured.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+    calls++;
+    if (calls === 1) return openaiResponse({ readable: true, observations: [] });
+    return openaiResponse({ outcome: "made_shot", confidence: "medium" });
+  }) as unknown as typeof fetch;
+
+  const result = await runPossessionAnalysis({
+    videoDataUrl: "data:video/mp4;base64,AAAA",
+    videoRemoteUrl: "https://signed.example/clip.mp4",
+    apiKey: "p-key",
+    provider: "perceptron",
+    context: { role: "coach" },
+  });
+
+  expect(captured[0].url).toContain("api.perceptron.inc");
+  expect(captured[0].body.model).toBe("perceptron-mk1");
+  expect(captured[0].body.response_format).toBeUndefined();
+  const content = (captured[0].body.messages as Array<{ content: unknown }>)[1].content as Array<
+    Record<string, unknown>
+  >;
+  const videoPart = content.find((p) => p.type === "video_url") as {
+    video_url: { url: string };
+  };
+  expect(videoPart.video_url.url).toBe("https://signed.example/clip.mp4");
+  expect(result.outcome).toBe("made_shot");
+});
+
+test("qwen provider targets the DashScope endpoint with its default model", async () => {
+  const urls: string[] = [];
+  const bodies: Array<Record<string, unknown>> = [];
+  const openaiResponse = (obj: unknown): Response =>
+    ({
+      status: 200,
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(obj) } }] }),
+      text: async () => "",
+    }) as unknown as Response;
+  let calls = 0;
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    urls.push(String(url));
+    bodies.push(JSON.parse(String(init?.body)));
+    calls++;
+    if (calls === 1) return openaiResponse({ readable: true, observations: [] });
+    return openaiResponse({ outcome: "turnover", confidence: "low" });
+  }) as unknown as typeof fetch;
+
+  const result = await runPossessionAnalysis({
+    videoDataUrl: "data:video/mp4;base64,AAAA",
+    apiKey: "q-key",
+    provider: "qwen",
+    context: { role: "coach" },
+  });
+
+  expect(urls[0]).toContain("dashscope-intl.aliyuncs.com");
+  expect(bodies[0].model).toBe("qwen3-vl-plus");
+  expect(result.outcome).toBe("turnover");
+});
+
+test("resolveModelConfig picks by priority and honors AI_PROVIDER", () => {
+  expect(resolveModelConfig({})).toBe(null);
+  expect(resolveModelConfig({ LOVABLE_API_KEY: "l" })?.provider).toBe("lovable");
+  expect(resolveModelConfig({ LOVABLE_API_KEY: "l", QWEN_API_KEY: "q" })?.provider).toBe("qwen");
+  expect(resolveModelConfig({ QWEN_API_KEY: "q", PERCEPTRON_API_KEY: "p" })?.provider).toBe(
+    "perceptron",
+  );
+  expect(resolveModelConfig({ PERCEPTRON_API_KEY: "p", GEMINI_API_KEY: "g" })?.provider).toBe(
+    "gemini",
+  );
+  // Explicit override wins over priority.
+  const forced = resolveModelConfig({
+    GEMINI_API_KEY: "g",
+    QWEN_API_KEY: "q",
+    AI_PROVIDER: "qwen",
+    AI_MODEL: "qwen3-vl-max",
+  });
+  expect(forced?.provider).toBe("qwen");
+  expect(forced?.model).toBe("qwen3-vl-max");
+  // DASHSCOPE_API_KEY is an accepted alias for qwen.
+  expect(resolveModelConfig({ DASHSCOPE_API_KEY: "d" })?.provider).toBe("qwen");
+  // Forcing a provider without its key is a loud error, not a silent fallback.
+  expect(() => resolveModelConfig({ AI_PROVIDER: "perceptron" })).toThrow();
 });
 
 test("declared outcome anchors both prompts and forbids fabrication", () => {
