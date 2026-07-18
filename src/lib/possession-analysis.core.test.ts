@@ -123,6 +123,8 @@ test("observer prompt demands decision snapshots; judge demands grounded techniq
   const { OBSERVE_SYSTEM, JUDGE_SYSTEM } = await import("./possession-analysis.core");
   expect(OBSERVE_SYSTEM).toContain("DECISION SNAPSHOTS");
   expect(OBSERVE_SYSTEM).toContain("PLAY-STOPPAGE SIGNALS");
+  expect(OBSERVE_SYSTEM).toContain("BALL-TRANSFER DISCIPLINE");
+  expect(OBSERVE_SYSTEM).toContain("NEVER invent a pass");
   expect(JUDGE_SYSTEM).toContain("Dead-ball awareness");
   expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");
   expect(JUDGE_SYSTEM).toContain("EXACT technique");

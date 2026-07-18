@@ -1,0 +1,26 @@
+[
+  {
+    "id": "file6-try1",
+    "video": "clips/file6.mp4",
+    "team_color": "black",
+    "truth": "Black drives off a pick-and-roll, bodies the defender, and dunks.",
+    "expected_outcome": "made_shot",
+    "tracked_player": "blue #5 \u2014 starts near the top of the key, on defense"
+  },
+  {
+    "id": "file6-try2",
+    "video": "clips/file6.mp4",
+    "team_color": "black",
+    "truth": "Black drives off a pick-and-roll, bodies the defender, and dunks.",
+    "expected_outcome": "made_shot",
+    "tracked_player": "blue #5 \u2014 starts near the top of the key, on defense"
+  },
+  {
+    "id": "file6-try3",
+    "video": "clips/file6.mp4",
+    "team_color": "black",
+    "truth": "Black drives off a pick-and-roll, bodies the defender, and dunks.",
+    "expected_outcome": "made_shot",
+    "tracked_player": "blue #5 \u2014 starts near the top of the key, on defense"
+  }
+]
