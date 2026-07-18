@@ -186,11 +186,21 @@ export function resolveModelConfig(env: Record<string, string | undefined>): Mod
   if (forced) {
     if (!(forced in keys)) throw new Error(`Unknown AI_PROVIDER "${forced}"`);
     if (!keys[forced]) throw new Error(`AI_PROVIDER is "${forced}" but its API key is not set`);
-    return { provider: forced, apiKey: keys[forced], model: env.AI_MODEL || undefined };
+    return {
+      provider: forced,
+      apiKey: keys[forced],
+      model: env.AI_MODEL || undefined,
+      videoFps: env.AI_VIDEO_FPS ? Number(env.AI_VIDEO_FPS) : undefined,
+    };
   }
   for (const provider of ["gemini", "perceptron", "qwen", "openrouter", "lovable"] as const) {
     if (keys[provider]) {
-      return { provider, apiKey: keys[provider], model: env.AI_MODEL || undefined };
+      return {
+        provider,
+        apiKey: keys[provider],
+        model: env.AI_MODEL || undefined,
+        videoFps: env.AI_VIDEO_FPS ? Number(env.AI_VIDEO_FPS) : undefined,
+      };
     }
   }
   return null;
@@ -211,7 +221,18 @@ export function isOutcome(v: unknown): v is Outcome {
   return typeof v === "string" && OUTCOMES.has(v as Outcome);
 }
 
-export type ModelConfig = { provider: Provider; apiKey: string; model?: string };
+export type ModelConfig = {
+  provider: Provider;
+  apiKey: string;
+  model?: string;
+  /**
+   * Video sampling rate for providers that support it (Gemini). Default 5 fps
+   * for short possession clips — the 1 fps API default literally cannot see
+   * fast events (passes, steals, releases), which is where fabrications come
+   * from. Override via AI_VIDEO_FPS.
+   */
+  videoFps?: number;
+};
 
 /**
  * One JSON-mode model call over either transport. Retries brief server blips
@@ -235,7 +256,10 @@ async function callModel(
     if (cfg.provider === "gemini") {
       const parts: Array<Record<string, unknown>> = [{ text: userText }];
       if (video) {
-        parts.push({ inline_data: { mime_type: video.mimeType, data: video.base64 } });
+        parts.push({
+          inline_data: { mime_type: video.mimeType, data: video.base64 },
+          video_metadata: { fps: cfg.videoFps ?? 5 },
+        });
       }
       return fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cfg.apiKey}`,
