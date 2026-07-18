@@ -246,8 +246,8 @@ async function callModel(
               temperature,
               responseMimeType: "application/json",
               // Thinking models spend output budget on reasoning first; without
-              // explicit headroom the JSON answer gets truncated mid-object.
-              maxOutputTokens: 32768,
+              // generous headroom the JSON answer gets truncated mid-object.
+              maxOutputTokens: 65536,
             },
           }),
           signal: AbortSignal.timeout(90_000),
@@ -326,6 +326,26 @@ async function callModel(
     choices?: Array<{ message?: { content?: string } }>;
   };
   return json?.choices?.[0]?.message?.content ?? "{}";
+}
+
+/**
+ * callModel + parse, with ONE retry on unparseable output. Thinking models
+ * occasionally exhaust their budget mid-JSON; a fresh sample usually lands.
+ */
+async function callModelJson<T>(
+  cfg: ModelConfig,
+  systemText: string,
+  userText: string,
+  video: VideoPart | null,
+  temperature: number,
+): Promise<T> {
+  const first = await callModel(cfg, systemText, userText, video, temperature);
+  try {
+    return parseModelJson<T>(first);
+  } catch {
+    const second = await callModel(cfg, systemText, userText, video, temperature);
+    return parseModelJson<T>(second);
+  }
 }
 
 /** Text-only JSON generation over either provider (used for scouting reports). */
@@ -657,18 +677,22 @@ export async function runPossessionAnalysis(params: {
 
   // Pass 1 — watch and observe (low temperature: stay literal).
   const observerCfg = params.observer ?? cfg;
-  const obsRaw = await callModel(
+  const obs = await callModelJson<ObservationResponse>(
     observerCfg,
     OBSERVE_SYSTEM,
     observeUserText(context),
     video,
     0.15,
   );
-  const obs = parseModelJson<ObservationResponse>(obsRaw);
 
   // Pass 2 — coach the play from the log only (no video, slightly warmer).
-  const judgeRaw = await callModel(cfg, JUDGE_SYSTEM, judgeUserText(context, obs), null, 0.2);
-  const judged = parseModelJson<JudgeResponse>(judgeRaw);
+  const judged = await callModelJson<JudgeResponse>(
+    cfg,
+    JUDGE_SYSTEM,
+    judgeUserText(context, obs),
+    null,
+    0.2,
+  );
 
   return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));
 }
