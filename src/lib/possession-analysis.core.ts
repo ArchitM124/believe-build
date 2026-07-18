@@ -227,6 +227,9 @@ async function callModel(
   temperature: number,
 ): Promise<string> {
   const model = cfg.model ?? DEFAULT_MODEL[cfg.provider];
+  // Pro-tier thinking models reason at length before answering; give them
+  // more runway than the snappy flash-class models.
+  const timeoutMs = /pro/i.test(model) ? 150_000 : 90_000;
 
   const doFetch = (): Promise<Response> => {
     if (cfg.provider === "gemini") {
@@ -250,7 +253,7 @@ async function callModel(
               maxOutputTokens: 65536,
             },
           }),
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(timeoutMs),
         },
       );
     }
@@ -286,7 +289,7 @@ async function callModel(
         ],
         ...(compat.jsonMode ? { response_format: { type: "json_object" } } : {}),
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   };
 
