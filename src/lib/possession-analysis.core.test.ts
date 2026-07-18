@@ -125,6 +125,12 @@ test("observer prompt demands decision snapshots; judge demands grounded techniq
   expect(OBSERVE_SYSTEM).toContain("PLAY-STOPPAGE SIGNALS");
   expect(OBSERVE_SYSTEM).toContain("BALL-TRANSFER DISCIPLINE");
   expect(OBSERVE_SYSTEM).toContain("NEVER invent a pass");
+  expect(OBSERVE_SYSTEM).toContain("JERSEY-COLOR PHRASING");
+  expect(OBSERVE_SYSTEM).toContain("colors describe JERSEYS, never people");
+  expect(OBSERVE_SYSTEM).not.toContain('"white ball-handler');
+  expect(OBSERVE_SYSTEM).toContain("MOVE & CONTEST DISCIPLINE");
+  expect(OBSERVE_SYSTEM).toContain("Embellished detail is fabrication");
+  expect(JUDGE_SYSTEM).toContain("never people");
   expect(JUDGE_SYSTEM).toContain("Dead-ball awareness");
   expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");
   expect(JUDGE_SYSTEM).toContain("EXACT technique");

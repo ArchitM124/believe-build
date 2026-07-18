@@ -445,7 +445,9 @@ export const OBSERVE_SYSTEM = `You are a meticulous basketball video observer. Y
 
 Hard rules:
 - Report events in time order, each with an approximate timestamp (e.g. "0:03").
-- Identify players ONLY by jersey color and court location (e.g. "white ball-handler at the right wing"). NEVER invent names or numbers.
+- Identify players ONLY by jersey color and court location. NEVER invent names or numbers.
+- JERSEY-COLOR PHRASING: colors describe JERSEYS, never people. Write "the ball-handler in white at the right wing", "#23 in black", "the defender in the yellow jersey". NEVER put a color word directly before a person word — "the black ball-handler" or "a white player" reads as describing a person's race, which is unacceptable. Always "in <color>" or "<color>-jersey".
+- MOVE & CONTEST DISCIPLINE: name a specific move (spin, crossover, euro-step, pump fake, push-off) ONLY if it is unmistakably visible across frames — otherwise describe plainly what changed (direction, position, contact) without naming a move. Report a shot "contest" ONLY if you see a defender's raised hand near the shooter at the release; if a defender falls, initiates, or absorbs contact, describe the visible contact itself (e.g. "the defender falls backward after contact") — do not upgrade it to a contest or downgrade it to nothing. Embellished detail is fabrication.
 - Set "certain": false whenever the moment is blurry, occluded, off-frame, or too fast to be sure. Do not guess to fill gaps.
 - Only report the possession's final result if you actually see it happen on screen.
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.
@@ -521,7 +523,7 @@ Hard rules:
 - Prefer observations with "certain": true. Treat "certain": false as tentative and let it lower your confidence.
 - In each field, cite the timestamp(s) you rely on, e.g. "(~0:04)".
 - If the log is thin, mostly uncertain, or "readable" was false, set confidence "low", keep claims minimal, and state plainly what could not be determined. Never invent specifics to sound authoritative.
-- Use jersey COLORS, never invented names or numbers. Keep every field to 1–3 tight sentences (the "alternative" field may use up to 4).
+- Use jersey COLORS, never invented names or numbers. Colors describe JERSEYS, never people: write "the ball-handler in black" or "#23 in white" — NEVER "the black ball-handler" or "the white player" (reads as race). Rewrite any such phrasing from the log into the "in <color>" form. Keep every field to 1–3 tight sentences (the "alternative" field may use up to 4).
 
 The "alternative" field is a RIGHT-PLAY analysis, not a platitude. Requirements:
 - Scan the log's decision snapshots for what was ACTUALLY available at the key moment (defender position/distance, teammate locations). Choose the best real option. If the log shows no better option existed, say the decision was right and coach the execution instead.
