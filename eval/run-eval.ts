@@ -20,7 +20,10 @@ import { fileURLToPath } from "node:url";
 import {
   runPossessionAnalysis,
   resolveModelConfig,
+  resolveProviderConfig,
   type AnalysisContext,
+  type ModelConfig,
+  type Provider,
 } from "../src/lib/possession-analysis.core";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -97,8 +100,20 @@ async function main() {
     process.exit(1);
   }
   config = { ...config, model: modelOverride() ?? config.model };
-  const provider = config.provider;
-  console.log(`Provider: ${provider}${config.model ? ` (${config.model})` : ""}\n`);
+  // HYBRID: OBSERVER_PROVIDER (+ OBSERVER_MODEL) runs Pass 1 on a different model.
+  let observer: ModelConfig | undefined;
+  const observerProvider = process.env.OBSERVER_PROVIDER?.trim().toLowerCase();
+  if (observerProvider) {
+    observer = resolveProviderConfig(
+      observerProvider as Provider,
+      process.env,
+      process.env.OBSERVER_MODEL || undefined,
+    );
+  }
+  const label = observer ? `${observer.provider}+${config.provider}` : config.provider;
+  console.log(
+    `Provider: ${label}${config.model ? ` (${config.model})` : ""}${observer ? ` [observer: ${observer.provider}]` : ""}\n`,
+  );
 
   const casesPath = resolve(here, process.argv[2] ?? "cases.json");
   if (!existsSync(casesPath)) {
@@ -141,6 +156,7 @@ async function main() {
         apiKey: config.apiKey,
         provider: config.provider,
         model: config.model,
+        observer,
         context,
       });
     } catch (e) {
@@ -193,7 +209,7 @@ async function main() {
   }
 
   // Per-provider results file so bake-off runs don't clobber each other.
-  const outPath = resolve(here, `results.${provider}.json`);
+  const outPath = resolve(here, `results.${label}.json`);
   writeFileSync(outPath, JSON.stringify(results, null, 2));
   console.log(
     `\n— Outcome accuracy: ${graded ? `${correct}/${graded} (${Math.round((100 * correct) / graded)}%)` : "no graded cases"} —`,

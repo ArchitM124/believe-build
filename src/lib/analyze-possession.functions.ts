@@ -4,7 +4,10 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   runPossessionAnalysis,
   resolveModelConfig,
+  resolveProviderConfig,
   isOutcome,
+  type ModelConfig,
+  type Provider,
 } from "@/lib/possession-analysis.core";
 import { STALE_AFTER_MS } from "@/lib/analysis-constants";
 
@@ -117,12 +120,25 @@ export const analyzePossession = createServerFn({ method: "POST" })
     // --- 2) Run the two-pass analysis ---
     let result;
     try {
+      // HYBRID: OBSERVER_PROVIDER (+ optional OBSERVER_MODEL) runs Pass 1 on
+      // a different model — e.g. a perception specialist watches the video
+      // while the main provider judges. Unset = same model for both passes.
+      let observer: ModelConfig | undefined;
+      const observerProvider = process.env.OBSERVER_PROVIDER?.trim().toLowerCase();
+      if (observerProvider) {
+        observer = resolveProviderConfig(
+          observerProvider as Provider,
+          process.env,
+          process.env.OBSERVER_MODEL || undefined,
+        );
+      }
       result = await runPossessionAnalysis({
         videoDataUrl,
         videoRemoteUrl,
         apiKey: modelConfig.apiKey,
         provider: modelConfig.provider,
         model: modelConfig.model,
+        observer,
         context: {
           role: play.uploader_role ?? "coach",
           title: play.title,

@@ -97,7 +97,9 @@ export type Provider = "lovable" | "gemini" | "perceptron" | "qwen" | "openroute
 
 const DEFAULT_MODEL: Record<Provider, string> = {
   lovable: "google/gemini-2.5-pro",
-  gemini: "gemini-2.5-pro",
+  // Stable alias — always the current production Pro model (2.5-pro is
+  // retired for new API keys; the alias sidesteps model-name churn).
+  gemini: "gemini-pro-latest",
   perceptron: "perceptron-mk1",
   qwen: "qwen3-vl-plus",
   // OpenRouter is a gateway; default to Perceptron Mk1 but any slug works.
@@ -155,14 +157,31 @@ function parseDataUrl(videoDataUrl: string, remoteUrl?: string): VideoPart {
  * env object). AI_PROVIDER forces a provider (error if its key is missing);
  * otherwise: gemini → perceptron → qwen → lovable, first configured key wins.
  */
-export function resolveModelConfig(env: Record<string, string | undefined>): ModelConfig | null {
-  const keys: Record<Provider, string | undefined> = {
+function keysFromEnv(
+  env: Record<string, string | undefined>,
+): Record<Provider, string | undefined> {
+  return {
     gemini: env.GEMINI_API_KEY,
     perceptron: env.PERCEPTRON_API_KEY,
     qwen: env.QWEN_API_KEY || env.DASHSCOPE_API_KEY,
     openrouter: env.OPENROUTER_API_KEY,
     lovable: env.LOVABLE_API_KEY,
   };
+}
+
+/** Config for one specific provider from env (throws if its key is missing). */
+export function resolveProviderConfig(
+  provider: Provider,
+  env: Record<string, string | undefined>,
+  model?: string,
+): ModelConfig {
+  const key = keysFromEnv(env)[provider];
+  if (!key) throw new Error(`No API key configured for provider "${provider}"`);
+  return { provider, apiKey: key, model };
+}
+
+export function resolveModelConfig(env: Record<string, string | undefined>): ModelConfig | null {
+  const keys = keysFromEnv(env);
   const forced = env.AI_PROVIDER?.trim().toLowerCase() as Provider | undefined;
   if (forced) {
     if (!(forced in keys)) throw new Error(`Unknown AI_PROVIDER "${forced}"`);
@@ -604,6 +623,12 @@ export async function runPossessionAnalysis(params: {
    * of inline base64.
    */
   videoRemoteUrl?: string;
+  /**
+   * HYBRID MODE: run Pass 1 (the video observer) on a different model than
+   * Pass 2 (the judge) — e.g. a perception specialist watches, a stronger
+   * reasoner coaches. Omit to use the main config for both passes.
+   */
+  observer?: ModelConfig;
 }): Promise<AnalysisResult> {
   const { videoDataUrl, apiKey, context } = params;
   const cfg: ModelConfig = {
@@ -614,7 +639,14 @@ export async function runPossessionAnalysis(params: {
   const video = parseDataUrl(videoDataUrl, params.videoRemoteUrl);
 
   // Pass 1 — watch and observe (low temperature: stay literal).
-  const obsRaw = await callModel(cfg, OBSERVE_SYSTEM, observeUserText(context), video, 0.15);
+  const observerCfg = params.observer ?? cfg;
+  const obsRaw = await callModel(
+    observerCfg,
+    OBSERVE_SYSTEM,
+    observeUserText(context),
+    video,
+    0.15,
+  );
   const obs = parseModelJson<ObservationResponse>(obsRaw);
 
   // Pass 2 — coach the play from the log only (no video, slightly warmer).

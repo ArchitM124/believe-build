@@ -24,7 +24,7 @@ type Row = {
   error?: string;
 };
 
-const files = readdirSync(here).filter((f) => /^results\.[a-z]+\.json$/.test(f));
+const files = readdirSync(here).filter((f) => /^results\.[a-z0-9+-]+\.json$/.test(f));
 if (!files.length) {
   console.error("No eval/results.<provider>.json files found — run the bench first.");
   process.exit(1);
@@ -32,7 +32,7 @@ if (!files.length) {
 
 const runs = new Map<string, Map<string, Row>>();
 for (const f of files) {
-  const provider = f.replace(/^results\./, "").replace(/\.json$/, "");
+  const provider = f.slice("results.".length, -".json".length);
   const rows = JSON.parse(readFileSync(resolve(here, f), "utf8")) as Row[];
   runs.set(provider, new Map(rows.map((r) => [r.id, r])));
 }

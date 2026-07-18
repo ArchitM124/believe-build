@@ -276,6 +276,60 @@ test("qwen provider targets the DashScope endpoint with its default model", asyn
   expect(result.outcome).toBe("turnover");
 });
 
+test("hybrid mode: observer config runs pass 1, main config runs pass 2", async () => {
+  const urls: string[] = [];
+  let calls = 0;
+  globalThis.fetch = (async (url: RequestInfo | URL) => {
+    urls.push(String(url));
+    calls++;
+    if (calls === 1) {
+      // Pass 1 lands on the OpenRouter (observer) endpoint — OpenAI shape.
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ readable: true, observations: [] }) } }],
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    }
+    // Pass 2 lands on Google (judge) — Gemini shape.
+    return {
+      status: 200,
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: JSON.stringify({ outcome: "made_shot", confidence: "high" }) }],
+            },
+          },
+        ],
+      }),
+      text: async () => "",
+    } as unknown as Response;
+  }) as unknown as typeof fetch;
+
+  const result = await runPossessionAnalysis({
+    videoDataUrl: "data:video/mp4;base64,AAAA",
+    apiKey: "google-key",
+    provider: "gemini",
+    observer: { provider: "openrouter", apiKey: "or-key" },
+    context: { role: "coach" },
+  });
+
+  expect(urls[0]).toContain("openrouter.ai");
+  expect(urls[1]).toContain("generativelanguage.googleapis.com");
+  expect(result.outcome).toBe("made_shot");
+});
+
+test("resolveProviderConfig returns a specific provider's config or throws", async () => {
+  const { resolveProviderConfig } = await import("./possession-analysis.core");
+  const cfg = resolveProviderConfig("openrouter", { OPENROUTER_API_KEY: "or" }, "m");
+  expect(cfg).toEqual({ provider: "openrouter", apiKey: "or", model: "m" });
+  expect(() => resolveProviderConfig("qwen", {})).toThrow();
+});
+
 test("resolveModelConfig picks by priority and honors AI_PROVIDER", () => {
   expect(resolveModelConfig({})).toBe(null);
   expect(resolveModelConfig({ LOVABLE_API_KEY: "l" })?.provider).toBe("lovable");
