@@ -35,6 +35,12 @@ test("parseModelJson throws on non-JSON (caller marks the clip failed)", () => {
   expect(() => parseModelJson("sorry, I can't do that")).toThrow();
 });
 
+test("parseModelJson extracts an object wrapped in prose", () => {
+  expect(parseModelJson<Parsed>('Here is the analysis: {"a":1} Hope that helps!')).toEqual({
+    a: 1,
+  });
+});
+
 // ---- normalizeObservations: coerce the model's loose array --------------
 
 test("normalizeObservations returns [] for non-arrays", () => {

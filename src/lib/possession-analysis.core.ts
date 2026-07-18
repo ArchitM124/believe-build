@@ -242,7 +242,13 @@ async function callModel(
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemText }] },
             contents: [{ role: "user", parts }],
-            generationConfig: { temperature, responseMimeType: "application/json" },
+            generationConfig: {
+              temperature,
+              responseMimeType: "application/json",
+              // Thinking models spend output budget on reasoning first; without
+              // explicit headroom the JSON answer gets truncated mid-object.
+              maxOutputTokens: 32768,
+            },
           }),
           signal: AbortSignal.timeout(90_000),
         },
@@ -338,7 +344,18 @@ export function parseModelJson<T>(content: string): T {
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/i, "");
-  return JSON.parse(cleaned) as T;
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (e) {
+    // Fallback: models sometimes wrap the JSON in prose — extract the
+    // outermost object and try once more. (Truncated JSON still throws.)
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1)) as T;
+    }
+    throw e;
+  }
 }
 
 function contextBlock(ctx: AnalysisContext): string {
