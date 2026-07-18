@@ -16,8 +16,8 @@ dist-ssr
 .nitro
 *.local
 
-# Local environment / secrets
-.env
+# Local environment / secrets (root .env holds ONLY Lovable's publishable
+# Supabase values and is committed by design; real secrets live in env vars)
 .env.*
 !.env.example
 
