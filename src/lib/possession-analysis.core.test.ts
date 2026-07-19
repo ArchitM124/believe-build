@@ -130,6 +130,8 @@ test("observer prompt demands decision snapshots; judge demands grounded techniq
   expect(OBSERVE_SYSTEM).not.toContain('"white ball-handler');
   expect(OBSERVE_SYSTEM).toContain("MOVE & CONTEST DISCIPLINE");
   expect(OBSERVE_SYSTEM).toContain("Embellished detail is fabrication");
+  expect(OBSERVE_SYSTEM).toContain("FINISH TYPE");
+  expect(OBSERVE_SYSTEM).toContain('never default to "layup"');
   expect(JUDGE_SYSTEM).toContain("never people");
   expect(JUDGE_SYSTEM).toContain("Dead-ball awareness");
   expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");
@@ -144,6 +146,7 @@ test("prompts include tracking instructions only when a player is set", () => {
   expect(observeUserText(withPlayer)).toContain("TRACKED PLAYER");
   expect(observeUserText(without)).not.toContain("TRACKED PLAYER");
   expect(judgeUserText(withPlayer, {})).toContain("PERSONAL COACHING MODE");
+  expect(judgeUserText(withPlayer, {})).toContain("SECOND PERSON");
   expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
 });
 

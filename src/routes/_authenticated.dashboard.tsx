@@ -49,7 +49,6 @@ type Possession = {
   id: string;
   title: string | null;
   notes: string | null;
-  uploader_role: "coach" | "player";
   status: "uploading" | "processing" | "ready" | "failed";
   error: string | null;
   outcome: string;
@@ -82,7 +81,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from("plays")
         .select(
-          "id,title,notes,uploader_role,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at",
+          "id,title,notes,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at",
         )
         .not("user_id", "is", null)
         .order("created_at", { ascending: false });
@@ -135,7 +134,7 @@ function Dashboard() {
           <div className="text-xs uppercase tracking-[0.3em] text-primary">Film room</div>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your possessions</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user?.email}. Upload one possession at a time — coach or player.
+            Signed in as {user?.email}. Upload one possession at a time.
           </p>
         </div>
         <UploadDialog onDone={() => qc.invalidateQueries({ queryKey: ["possessions"] })} />
@@ -204,9 +203,6 @@ function PossessionCard({ p }: { p: Possession }) {
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="text-[10px] uppercase">
-          {p.uploader_role}
-        </Badge>
         {p.status === "ready" && (
           <Badge variant="outline" className="text-[10px] uppercase">
             {OUTCOME_LABEL[p.outcome] ?? p.outcome}
@@ -283,7 +279,6 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
         user_id: uid,
         title: String(fd.get("title") || "Untitled possession"),
         notes: (fd.get("notes") as string) || null,
-        uploader_role: (fd.get("uploader_role") as "coach" | "player") || "coach",
         team_color: (fd.get("team_color") as string)?.trim() || null,
         attack_direction: (fd.get("attack_direction") as string) || "unclear",
         tracked_player: (fd.get("tracked_player") as string)?.trim() || null,
@@ -401,18 +396,6 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="title">Title</Label>
               <Input id="title" name="title" placeholder="Q3 · pick-and-roll switch" required />
-            </div>
-            <div className="space-y-1.5">
-              <Label>I am a…</Label>
-              <Select name="uploader_role" defaultValue="coach">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="coach">Coach</SelectItem>
-                  <SelectItem value="player">Player</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="team_color">Your team's jersey color</Label>

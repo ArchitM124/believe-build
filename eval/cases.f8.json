@@ -1,0 +1,10 @@
+[
+  {
+    "id": "file8",
+    "video": "clips/file8.mp4",
+    "team_color": "yellow",
+    "truth": "Yellow goes for a fastbreak dunk and is blocked off the backboard.",
+    "expected_outcome": "missed_shot",
+    "tracked_player": "yellow #23 \u2014 white arm sleeve on the right arm, starts at halfcourt near the far sideline"
+  }
+]

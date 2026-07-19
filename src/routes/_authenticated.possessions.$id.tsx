@@ -29,7 +29,6 @@ type Play = {
   id: string;
   title: string | null;
   notes: string | null;
-  uploader_role: "coach" | "player";
   status: "uploading" | "processing" | "ready" | "failed";
   error: string | null;
   outcome: string;
@@ -163,9 +162,6 @@ function PossessionDetail() {
 
       <div className="mt-4">
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-[10px] uppercase">
-            {play.uploader_role}
-          </Badge>
           {play.tracked_player && (
             <Badge variant="outline" className="text-[10px]">
               Focus: {play.tracked_player}
