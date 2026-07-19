@@ -132,6 +132,8 @@ test("observer prompt demands decision snapshots; judge demands grounded techniq
   expect(OBSERVE_SYSTEM).toContain("Embellished detail is fabrication");
   expect(OBSERVE_SYSTEM).toContain("FINISH TYPE");
   expect(OBSERVE_SYSTEM).toContain('never default to "layup"');
+  expect(OBSERVE_SYSTEM).toContain("EVERY BASKETBALL TERM IS A CLAIM");
+  expect(OBSERVE_SYSTEM).toContain("A generic TRUE sentence always beats a specific guess");
   expect(JUDGE_SYSTEM).toContain("never people");
   expect(JUDGE_SYSTEM).toContain("Dead-ball awareness");
   expect(JUDGE_SYSTEM).toContain("RIGHT-PLAY analysis");

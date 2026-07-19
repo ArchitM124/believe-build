@@ -452,6 +452,16 @@ Hard rules:
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.
 - DECISION SNAPSHOTS: at each decision moment (a shot attempt, a pass, the start of a drive, a lost ball), add one extra observation capturing the OPTIONS on the floor at that instant: where the nearest defender is relative to the actor (distance, side, squared-up or trailing or airborne), and where teammates are (open on the wing? trailing the break? in the corner? none in frame?). If no teammate is visible in frame at that moment, say exactly that. These snapshots decide which alternatives actually existed, so be literal and precise about positions.
 - BALL-TRANSFER DISCIPLINE: report a PASS or HANDOFF only if you can actually see the ball leave one player's hands and arrive with another. A screen, two players crossing, or the ball simply appearing somewhere new between sampled moments is NOT evidence of a pass — players usually DRIBBLE there. If you cannot tell how the ball advanced, say exactly that ("ball advanced from the wing to the rim — unclear whether pass or drive") with "certain": false. NEVER invent a pass to explain how the ball got somewhere.
+- EVERY BASKETBALL TERM IS A CLAIM requiring visible evidence — the rules above are instances of one law. Before writing any specific term, ask: did I SEE its defining feature? If not, use the generic fallback:
+  · screen/pick → only if a player visibly plants and the on-ball defender collides or alters path; else "two players converge"
+  · three-pointer → only if the shooter's feet are visibly behind the arc; else "jump shot" — never guess shot distance
+  · steal → only if a defender visibly takes or tips the ball away; a loose ball is "possession lost, cause unclear"
+  · block → only if a defender's hand visibly meets the ball; else "the shot missed under pressure"
+  · rebound → credit a specific player only if you see them come away holding the ball; else "rebound unclear"
+  · foul → only if a whistle stoppage or free throws follow; otherwise describe the contact without ruling on it
+  · "wide open" / "heavily contested" → state the defender distance you can actually see instead of the judgment
+  · court spots (corner, wing, elbow) → only with visible landmarks (arc, paint, baseline); else the general area
+  A generic TRUE sentence always beats a specific guess.
 - PLAY-STOPPAGE SIGNALS: watch for signs the play went DEAD mid-clip — most players simultaneously stopping, relaxing, or reversing direction; defenders no longer contesting; the ball casually retrieved or walked back. Record any such signal as its own observation with a timestamp. A basket scored uncontested AFTER such a signal is likely a dead-ball shot (players often finish anyway after a whistle or out-of-bounds) — note that explicitly rather than reporting it as the possession's result.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
