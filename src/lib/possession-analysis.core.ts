@@ -226,10 +226,12 @@ export type ModelConfig = {
   apiKey: string;
   model?: string;
   /**
-   * Video sampling rate for providers that support it (Gemini). Default 5 fps
+   * Video sampling rate for providers that support it (Gemini). Default 15 fps
    * for short possession clips — the 1 fps API default literally cannot see
    * fast events (passes, steals, releases), which is where fabrications come
-   * from. Override via AI_VIDEO_FPS.
+   * from, and bench runs on real clips scored 15 fps well above 8 (better
+   * outcome accuracy AND fewer timeouts/truncations). API max is 24.
+   * Override via AI_VIDEO_FPS.
    */
   videoFps?: number;
 };
@@ -258,7 +260,7 @@ async function callModel(
       if (video) {
         parts.push({
           inline_data: { mime_type: video.mimeType, data: video.base64 },
-          video_metadata: { fps: cfg.videoFps ?? 8 },
+          video_metadata: { fps: cfg.videoFps ?? 15 },
         });
       }
       return fetch(
