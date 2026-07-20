@@ -4,6 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Loader2,
@@ -13,10 +22,12 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzePossession } from "@/lib/analyze-possession.functions";
 import { STALE_AFTER_MS } from "@/lib/analysis-constants";
+import { clipWindow, formatClock } from "@/lib/clip-window";
 
 export const Route = createFileRoute("/_authenticated/possessions/$id")({
   head: () => ({
@@ -62,6 +73,7 @@ function PossessionDetail() {
   const { id } = Route.useParams();
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const { data: play, refetch } = useQuery({
     queryKey: ["possession", id],
@@ -196,7 +208,13 @@ function PossessionDetail() {
 
       <div className="mt-6 overflow-hidden rounded-xl border border-border bg-black/60">
         {videoUrl ? (
-          <video src={videoUrl} controls className="aspect-video w-full" />
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            controls
+            crossOrigin="anonymous"
+            className="aspect-video w-full"
+          />
         ) : play.video_path ? (
           <div className="aspect-video grid place-items-center court-grid">
             <div className="text-center">
@@ -215,6 +233,8 @@ function PossessionDetail() {
           </div>
         )}
       </div>
+
+      {play.kind === "game" && videoUrl && <GameClipper play={play} videoRef={videoRef} />}
 
       {play.status === "processing" && (
         <div className="mt-6 rounded-lg border border-border bg-card p-5">
@@ -353,6 +373,191 @@ function Section({
         {label}
       </div>
       <p className="mt-1 text-sm leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+/** captureStream is real in modern browsers but missing from TS's DOM types. */
+type CapturableVideo = HTMLVideoElement & { captureStream?: () => MediaStream };
+
+function GameClipper({
+  play,
+  videoRef,
+}: {
+  play: Play;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+}) {
+  const [len, setLen] = useState("8");
+  const [trackedPlayer, setTrackedPlayer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState("");
+
+  const clip = async () => {
+    const v = videoRef.current as CapturableVideo | null;
+    if (!v) return;
+    if (typeof v.captureStream !== "function" || typeof MediaRecorder === "undefined") {
+      return toast.error(
+        "In-app clipping isn't supported in this browser — trim the moment in your Photos app and upload it as a clip.",
+      );
+    }
+    const { start, end } = clipWindow(v.currentTime, Number(len));
+    if (end - start < 1) {
+      return toast.error("Play the game to just AFTER the moment, then clip backward from there.");
+    }
+    const mimeType = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+      "video/mp4",
+    ].find((m) => MediaRecorder.isTypeSupported(m));
+    if (!mimeType) return toast.error("This browser can't record video clips.");
+
+    const { data: userRes } = await supabase.auth.getUser();
+    const uid = userRes.user?.id;
+    if (!uid) return toast.error("Not signed in");
+
+    setBusy(true);
+    try {
+      // Seek to the window start and wait for the frame.
+      setPhase("Rewinding…");
+      v.pause();
+      await new Promise<void>((res) => {
+        const done = () => {
+          v.removeEventListener("seeked", done);
+          res();
+        };
+        v.addEventListener("seeked", done);
+        v.currentTime = start;
+      });
+
+      // Record the window in real time off the playing video.
+      setPhase(`Capturing ${Math.round(end - start)}s…`);
+      const stream = v.captureStream!();
+      const chunks: BlobPart[] = [];
+      const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      const stopped = new Promise<void>((res) => {
+        rec.onstop = () => res();
+      });
+      const stopAll = () => {
+        if (rec.state !== "inactive") rec.stop();
+        v.pause();
+        v.removeEventListener("timeupdate", onTime);
+      };
+      const onTime = () => {
+        if (v.currentTime >= end - 0.05) stopAll();
+      };
+      v.addEventListener("timeupdate", onTime);
+      const safety = setTimeout(stopAll, (end - start) * 1000 + 4000);
+      rec.start(250);
+      await v.play();
+      await stopped;
+      clearTimeout(safety);
+
+      const blob = new Blob(chunks, { type: mimeType });
+      if (blob.size < 5_000) throw new Error("Capture produced no video — try again");
+
+      // Save as a regular possession clip and analyze it.
+      setPhase("Uploading clip…");
+      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+      const { data: row, error: iErr } = await supabase
+        .from("plays")
+        .insert({
+          user_id: uid,
+          kind: "possession",
+          title: `${play.title ?? "Game"} · clip @ ${formatClock(start)}`,
+          notes: `Clipped in-app from the ${play.game_type === "organized" ? "game" : "pickup game"} "${play.title ?? "Game"}" (${formatClock(start)}–${formatClock(end)}).`,
+          tracked_player: trackedPlayer.trim() || null,
+          duration_seconds: Math.round(end - start),
+          status: "uploading",
+        })
+        .select()
+        .single();
+      if (iErr || !row) throw new Error(iErr?.message ?? "Could not create the clip");
+
+      const path = `${uid}/possessions/${row.id}/clip.${ext}`;
+      const { error: upErr } = await supabase.storage.from("game-videos").upload(path, blob, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: mimeType,
+      });
+      if (upErr) {
+        await supabase
+          .from("plays")
+          .update({ status: "failed", error: upErr.message })
+          .eq("id", row.id);
+        throw new Error(upErr.message);
+      }
+      await supabase.from("plays").update({ video_path: path }).eq("id", row.id);
+
+      void analyzePossession({ data: { possessionId: row.id } }).catch(async (err) => {
+        await supabase
+          .from("plays")
+          .update({
+            status: "failed",
+            error: err instanceof Error ? err.message : "Analysis failed",
+          })
+          .eq("id", row.id);
+      });
+      toast.success("Clip saved — the AI is on it. Find it in your film room.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Clipping failed");
+    } finally {
+      setBusy(false);
+      setPhase("");
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2">
+        <Scissors className="h-4 w-4 text-primary" />
+        <h2 className="font-semibold">Clip this game</h2>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Watch the game above. Right after something happens, clip backward from the playhead — the
+        clip becomes a possession and gets the full AI breakdown.
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-[110px_1fr_auto]">
+        <div className="space-y-1.5">
+          <Label>Length</Label>
+          <Select value={len} onValueChange={setLen}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="4">4s</SelectItem>
+              <SelectItem value="8">8s</SelectItem>
+              <SelectItem value="12">12s</SelectItem>
+              <SelectItem value="16">16s</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="clip_tracked">Focus on one player (optional)</Label>
+          <Input
+            id="clip_tracked"
+            value={trackedPlayer}
+            onChange={(e) => setTrackedPlayer(e.target.value)}
+            placeholder="'white #23' · 'gray hoodie, starts left corner'"
+          />
+        </div>
+        <div className="flex items-end">
+          <Button onClick={clip} disabled={busy} className="gap-2">
+            {busy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> {phase || "Working…"}
+              </>
+            ) : (
+              <>
+                <Scissors className="h-4 w-4" /> Clip last {len}s
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
