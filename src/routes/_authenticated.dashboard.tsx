@@ -410,7 +410,19 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          // Hard reset: a file chosen in a previous session (or a failed
+          // attempt) must never silently ride along into a new upload.
+          setFile(null);
+          setProgress(0);
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" /> Upload
@@ -451,7 +463,10 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
                   : `Clip (MP4 / MOV, one possession, up to ${KIND_CAP_MB.possession}MB)`}
             </Label>
             <div
-              onClick={() => inputRef.current?.click()}
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = "";
+                inputRef.current?.click();
+              }}
               className="cursor-pointer rounded-md border border-dashed border-border bg-muted/30 p-6 text-center hover:border-primary/60"
             >
               <Upload className="mx-auto h-6 w-6 text-primary" />
