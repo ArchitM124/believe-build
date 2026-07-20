@@ -127,6 +127,16 @@ test("observer prompt demands decision snapshots; judge demands grounded techniq
   expect(OBSERVE_SYSTEM).toContain("NEVER invent a pass");
   expect(OBSERVE_SYSTEM).toContain("NEVER BRIDGE A GAP WITH A STORY");
   expect(OBSERVE_SYSTEM).toContain("the mechanism was not visible");
+  expect(OBSERVE_SYSTEM).toContain("PASS COMPLETION IS A SEPARATE CLAIM");
+  expect(OBSERVE_SYSTEM).toContain(
+    "caught-and-controlled / touched-but-lost / never-touched / arrival-not-visible",
+  );
+  expect(OBSERVE_SYSTEM).toContain("is NOT catching it");
+  expect(JUDGE_SYSTEM).toContain("PASS GRADING");
+  expect(JUDGE_SYSTEM).toContain(
+    "never blame the receiver for a ball the log does not show reaching them",
+  );
+  expect(JUDGE_SYSTEM).toContain("is on the PASSER");
   expect(OBSERVE_SYSTEM).toContain("JERSEY-COLOR PHRASING");
   expect(OBSERVE_SYSTEM).toContain("colors describe JERSEYS, never people");
   expect(OBSERVE_SYSTEM).not.toContain('"white ball-handler');
