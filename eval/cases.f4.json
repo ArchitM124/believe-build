@@ -1,0 +1,26 @@
+[
+  {
+    "id": "file4-try1",
+    "video": "clips/file4.mp4",
+    "team_color": "black",
+    "truth": "Black #23 grabs the defensive rebound in the paint with two defenders near him, tries an outlet pass up the floor in transition, but it is a bad pass to a teammate who was not ready and a defender grabs it. He never dribbles after the rebound.",
+    "expected_outcome": "turnover",
+    "tracked_player": "black #23 \u2014 grabs the rebound in the paint, on offense"
+  },
+  {
+    "id": "file4-try2",
+    "video": "clips/file4.mp4",
+    "team_color": "black",
+    "truth": "Black #23 grabs the defensive rebound in the paint with two defenders near him, tries an outlet pass up the floor in transition, but it is a bad pass to a teammate who was not ready and a defender grabs it. He never dribbles after the rebound.",
+    "expected_outcome": "turnover",
+    "tracked_player": "black #23 \u2014 grabs the rebound in the paint, on offense"
+  },
+  {
+    "id": "file4-try3",
+    "video": "clips/file4.mp4",
+    "team_color": "black",
+    "truth": "Black #23 grabs the defensive rebound in the paint with two defenders near him, tries an outlet pass up the floor in transition, but it is a bad pass to a teammate who was not ready and a defender grabs it. He never dribbles after the rebound.",
+    "expected_outcome": "turnover",
+    "tracked_player": "black #23 \u2014 grabs the rebound in the paint, on offense"
+  }
+]

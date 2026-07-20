@@ -258,7 +258,7 @@ async function callModel(
       if (video) {
         parts.push({
           inline_data: { mime_type: video.mimeType, data: video.base64 },
-          video_metadata: { fps: cfg.videoFps ?? 5 },
+          video_metadata: { fps: cfg.videoFps ?? 8 },
         });
       }
       return fetch(
@@ -451,7 +451,8 @@ Hard rules:
 - Only report the possession's final result if you actually see it happen on screen.
 - If the clip is too low-quality, too short, or not clearly basketball, set "readable": false.
 - DECISION SNAPSHOTS: at each decision moment (a shot attempt, a pass, the start of a drive, a lost ball), add one extra observation capturing the OPTIONS on the floor at that instant: where the nearest defender is relative to the actor (distance, side, squared-up or trailing or airborne), and where teammates are (open on the wing? trailing the break? in the corner? none in frame?). If no teammate is visible in frame at that moment, say exactly that. These snapshots decide which alternatives actually existed, so be literal and precise about positions.
-- BALL-TRANSFER DISCIPLINE: report a PASS or HANDOFF only if you can actually see the ball leave one player's hands and arrive with another. A screen, two players crossing, or the ball simply appearing somewhere new between sampled moments is NOT evidence of a pass — players usually DRIBBLE there. If you cannot tell how the ball advanced, say exactly that ("ball advanced from the wing to the rim — unclear whether pass or drive") with "certain": false. NEVER invent a pass to explain how the ball got somewhere.
+- BALL-TRANSFER DISCIPLINE: report a PASS or HANDOFF only if you can actually see the ball leave one player's hands and arrive with another. A screen, two players crossing, or the ball simply appearing somewhere new between sampled moments is NOT evidence of a pass. If you cannot tell how the ball advanced, say exactly that ("ball advanced from the wing to the rim — unclear whether pass or drive") with "certain": false. NEVER invent a pass to explain how the ball got somewhere.
+- NEVER BRIDGE A GAP WITH A STORY: when the situation differs between two sampled moments (possession flipped, the ball is suddenly elsewhere, a player is suddenly elsewhere) and you did NOT see the connecting event, record the gap itself: "between ~0:02 and ~0:04 possession changed from the team in black to the team in white — the mechanism was not visible." Do NOT construct a connective narrative — no invented dribbles, no invented advances up the floor, no invented steals-from-behind, no invented passes. A claim that a player traveled somewhere (e.g. "brought it to half court") requires you to have SEEN them along that path. The gap sentence is always the correct answer when you didn't see the bridge.
 - EVERY BASKETBALL TERM IS A CLAIM requiring visible evidence — the rules above are instances of one law. Before writing any specific term, ask: did I SEE its defining feature? If not, use the generic fallback:
   · screen/pick → only if a player visibly plants and the on-ball defender collides or alters path; else "two players converge"
   · three-pointer → only if the shooter's feet are visibly behind the arc; else "jump shot" — never guess shot distance
