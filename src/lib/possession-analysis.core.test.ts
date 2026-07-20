@@ -149,6 +149,9 @@ test("prompts include tracking instructions only when a player is set", () => {
   expect(observeUserText(without)).not.toContain("TRACKED PLAYER");
   expect(judgeUserText(withPlayer, {})).toContain("PERSONAL COACHING MODE");
   expect(judgeUserText(withPlayer, {})).toContain("SECOND PERSON");
+  expect(judgeUserText(withPlayer, {})).toContain("MATCH DISCLOSURE");
+  expect(observeUserText(withPlayer)).toContain("PREPONDERANCE of cues");
+  expect(observeUserText(withPlayer)).toContain("what matched and what conflicted");
   expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
 });
 
