@@ -78,17 +78,17 @@ function Landing() {
               {
                 icon: Film,
                 t: "1. Upload film",
-                d: "Drag your MP4 or MOV from a phone tripod or camcorder. Sideline / baseline / elevated — tell us the angle.",
+                d: "Clips, jumpshots, or full games — pickup runs and organized games both count. Phone-tripod footage is perfect.",
               },
               {
                 icon: Sparkles,
-                t: "2. AI breaks it down",
-                d: "Every possession becomes a play card with structured coaching feedback and a confidence rating.",
+                t: "2. AI coaches YOU",
+                d: "Possessions become play cards; jumpshots get a mechanics check that only flags what's costing you makes. Feedback talks to you: 'You attacked the middle…'",
               },
               {
                 icon: Share2,
-                t: "3. Send it to your team",
-                d: "Filter by turnovers, breakdowns, or scores. Share any clip with a player via a link.",
+                t: "3. Earn your overall",
+                d: "Counted events become 2K-style sub-scores. Upload 5 games to unlock your hidden overall — then share any breakdown with a link.",
               },
             ].map((s, i) => (
               <div key={i} className="rounded-xl border border-border bg-card p-6">
