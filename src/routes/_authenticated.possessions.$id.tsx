@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -23,6 +32,7 @@ import {
   AlertCircle,
   RefreshCw,
   Scissors,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { analyzePossession } from "@/lib/analyze-possession.functions";
@@ -54,6 +64,9 @@ type Play = {
   video_path: string | null;
   duration_seconds: number | null;
   share_id: string;
+  team_color: string | null;
+  attack_direction: string | null;
+  declared_outcome: string | null;
   tracked_player: string | null;
   updated_at: string;
   created_at: string;
@@ -559,5 +572,149 @@ function GameClipper({
         </div>
       </div>
     </div>
+  );
+}
+
+function AdjustAndRerun({ play, onDone }: { play: Play; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [trackedPlayer, setTrackedPlayer] = useState(play.tracked_player ?? "");
+  const [teamColor, setTeamColor] = useState(play.team_color ?? "");
+  const [attackDirection, setAttackDirection] = useState(play.attack_direction ?? "unclear");
+  const [declaredOutcome, setDeclaredOutcome] = useState(play.declared_outcome ?? "unsure");
+  const [notes, setNotes] = useState(play.notes ?? "");
+  const isJumpshot = play.kind === "jumpshot";
+
+  const openWithCurrent = (next: boolean) => {
+    setOpen(next);
+    if (next) {
+      // Always start from what the AI was actually told last time.
+      setTrackedPlayer(play.tracked_player ?? "");
+      setTeamColor(play.team_color ?? "");
+      setAttackDirection(play.attack_direction ?? "unclear");
+      setDeclaredOutcome(play.declared_outcome ?? "unsure");
+      setNotes(play.notes ?? "");
+    }
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("plays")
+        .update({
+          tracked_player: trackedPlayer.trim() || null,
+          team_color: teamColor.trim() || null,
+          attack_direction: attackDirection,
+          declared_outcome: declaredOutcome === "unsure" ? null : declaredOutcome,
+          notes: notes.trim() || null,
+        })
+        .eq("id", play.id);
+      if (error) throw new Error(error.message);
+      await analyzePossession({ data: { possessionId: play.id } });
+      toast.success("Re-analyzed with your updated details");
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to re-run");
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={openWithCurrent}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" /> Adjust &amp; re-run
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Fix the details, then re-run</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {!isJumpshot && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="adj_tracked">Focus on one player</Label>
+                <Input
+                  id="adj_tracked"
+                  value={trackedPlayer}
+                  onChange={(e) => setTrackedPlayer(e.target.value)}
+                  placeholder="'white #23' · 'gray hoodie, starts left corner' · empty = whole team"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Wrong number or color last time? This is the field to fix.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="adj_color">Your team's jersey color</Label>
+                  <Input
+                    id="adj_color"
+                    value={teamColor}
+                    onChange={(e) => setTeamColor(e.target.value)}
+                    placeholder="e.g. white, navy"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Attacking which basket?</Label>
+                  <Select value={attackDirection} onValueChange={setAttackDirection}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="left">Left side</SelectItem>
+                      <SelectItem value="right">Right side</SelectItem>
+                      <SelectItem value="unclear">Not sure</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>What was the result?</Label>
+                <Select value={declaredOutcome} onValueChange={setDeclaredOutcome}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unsure">Let the AI figure it out</SelectItem>
+                    <SelectItem value="made_shot">Made shot</SelectItem>
+                    <SelectItem value="missed_shot">Missed shot</SelectItem>
+                    <SelectItem value="turnover">Turnover</SelectItem>
+                    <SelectItem value="foul">Foul</SelectItem>
+                    <SelectItem value="defensive_stop">Defensive stop (we were on D)</SelectItem>
+                    <SelectItem value="defensive_breakdown">
+                      Got scored on (we were on D)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="adj_notes">Notes for the AI</Label>
+            <Textarea
+              id="adj_notes"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={
+                isJumpshot
+                  ? "Anything about the reps: angle, what you're working on…"
+                  : "The more you tell it, the less it guesses: 'no pass — he drives it himself'"
+              }
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={busy} className="w-full">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save & re-run analysis"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
