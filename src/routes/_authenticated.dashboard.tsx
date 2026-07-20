@@ -49,6 +49,8 @@ type Possession = {
   id: string;
   title: string | null;
   notes: string | null;
+  kind: string;
+  game_type: string | null;
   status: "uploading" | "processing" | "ready" | "failed";
   error: string | null;
   outcome: string;
@@ -81,7 +83,7 @@ function Dashboard() {
       const { data, error } = await supabase
         .from("plays")
         .select(
-          "id,title,notes,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at",
+          "id,title,notes,kind,game_type,status,error,outcome,what_happened,confidence,flagged,duration_seconds,video_path,updated_at,created_at",
         )
         .not("user_id", "is", null)
         .order("created_at", { ascending: false });
@@ -203,7 +205,16 @@ function PossessionCard({ p }: { p: Possession }) {
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        {p.status === "ready" && (
+        {p.kind !== "possession" && (
+          <Badge variant="secondary" className="text-[10px] uppercase">
+            {p.kind === "game"
+              ? p.game_type === "organized"
+                ? "game"
+                : "pickup game"
+              : "jumpshot"}
+          </Badge>
+        )}
+        {p.status === "ready" && p.kind === "possession" && (
           <Badge variant="outline" className="text-[10px] uppercase">
             {OUTCOME_LABEL[p.outcome] ?? p.outcome}
           </Badge>
@@ -239,8 +250,13 @@ function EmptyState({ onDone }: { onDone: () => void }) {
   );
 }
 
+type UploadKind = "possession" | "jumpshot" | "game";
+
+const KIND_CAP_MB: Record<UploadKind, number> = { possession: 14, jumpshot: 14, game: 200 };
+
 function UploadDialog({ onDone }: { onDone: () => void }) {
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<UploadKind>("possession");
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -251,11 +267,14 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     if (!file) return toast.error("Pick a video file");
-    // Must match MAX_VIDEO_BYTES in analyze-possession.functions.ts — the model
-    // takes the clip inline (base64 adds ~33%), so anything larger is rejected.
-    if (file.size > 14 * 1024 * 1024)
+    // Clips/jumpshots must fit the AI's inline limit (base64 adds ~33% — must
+    // match MAX_VIDEO_BYTES server-side). Full games are stored, not inlined.
+    const capMB = KIND_CAP_MB[kind];
+    if (file.size > capMB * 1024 * 1024)
       return toast.error(
-        "Clip exceeds 14MB. Trim to a single possession (≈≤12s at 1080p, ≤25s at 720p).",
+        kind === "game"
+          ? `Game file exceeds ${capMB}MB — try a lower export resolution.`
+          : `Clip exceeds ${capMB}MB. Trim to a single ${kind === "jumpshot" ? "shot (a few reps is perfect)" : "possession (≈≤12s at 1080p, ≤25s at 720p)"}.`,
       );
 
     const { data: userRes } = await supabase.auth.getUser();
@@ -277,15 +296,26 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
       .from("plays")
       .insert({
         user_id: uid,
-        title: String(fd.get("title") || "Untitled possession"),
+        kind,
+        game_type: kind === "game" ? (fd.get("game_type") as string) || "pickup" : null,
+        title: String(
+          fd.get("title") ||
+            (kind === "jumpshot"
+              ? "Jumpshot check"
+              : kind === "game"
+                ? "Game"
+                : "Untitled possession"),
+        ),
         notes: (fd.get("notes") as string) || null,
-        team_color: (fd.get("team_color") as string)?.trim() || null,
-        attack_direction: (fd.get("attack_direction") as string) || "unclear",
-        tracked_player: (fd.get("tracked_player") as string)?.trim() || null,
+        team_color: kind === "possession" ? (fd.get("team_color") as string)?.trim() || null : null,
+        attack_direction:
+          kind === "possession" ? (fd.get("attack_direction") as string) || "unclear" : null,
+        tracked_player:
+          kind === "possession" ? (fd.get("tracked_player") as string)?.trim() || null : null,
         declared_outcome:
-          ((fd.get("declared_outcome") as string) || "unsure") === "unsure"
-            ? null
-            : (fd.get("declared_outcome") as string),
+          kind === "possession" && ((fd.get("declared_outcome") as string) || "unsure") !== "unsure"
+            ? (fd.get("declared_outcome") as string)
+            : null,
         duration_seconds: duration,
         status: "uploading",
       })
@@ -338,7 +368,29 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     setOpen(false);
     setFile(null);
     setProgress(0);
-    toast.success("Uploaded — the AI is breaking it down");
+
+    if (kind === "game") {
+      // Games are stored, not AI-analyzed (they exceed the inline limit).
+      // They count toward unlocking your overall.
+      await supabase
+        .from("plays")
+        .update({
+          status: "ready",
+          what_happened:
+            "Full game saved. Whole-game AI breakdown is coming soon — clip your key possessions from this game and upload them as clips for analysis.",
+        })
+        .eq("id", play.id);
+      toast.success("Game saved — it counts toward unlocking your overall");
+      onDone();
+      navigate({ to: "/possessions/$id", params: { id: play.id } });
+      return;
+    }
+
+    toast.success(
+      kind === "jumpshot"
+        ? "Uploaded — checking your mechanics"
+        : "Uploaded — the AI is breaking it down",
+    );
     navigate({ to: "/possessions/$id", params: { id: play.id } });
 
     void analyzePossession({ data: { possessionId: play.id } })
@@ -361,16 +413,43 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="gap-2">
-          <Plus className="h-4 w-4" /> Upload possession
+          <Plus className="h-4 w-4" /> Upload
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload a possession</DialogTitle>
+          <DialogTitle>
+            {kind === "jumpshot"
+              ? "Check your jumpshot"
+              : kind === "game"
+                ? "Upload a game"
+                : "Upload a possession"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Clip (MP4 / MOV, one possession, up to 20MB)</Label>
+            <Label>What are you uploading?</Label>
+            <Select value={kind} onValueChange={(v) => setKind(v as UploadKind)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="possession">Clip — one possession (analyzed)</SelectItem>
+                <SelectItem value="jumpshot">Jumpshot — form check (analyzed)</SelectItem>
+                <SelectItem value="game">
+                  Full game — pickup or organized (stored, counts toward your overall)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              {kind === "game"
+                ? `Game video (MP4 / MOV, up to ${KIND_CAP_MB.game}MB)`
+                : kind === "jumpshot"
+                  ? `Jumpshot clip (MP4 / MOV, a few reps, up to ${KIND_CAP_MB.jumpshot}MB)`
+                  : `Clip (MP4 / MOV, one possession, up to ${KIND_CAP_MB.possession}MB)`}
+            </Label>
             <div
               onClick={() => inputRef.current?.click()}
               className="cursor-pointer rounded-md border border-dashed border-border bg-muted/30 p-6 text-center hover:border-primary/60"
@@ -395,65 +474,103 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="title">Title</Label>
-              <Input id="title" name="title" placeholder="Q3 · pick-and-roll switch" required />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="team_color">Your team's jersey color</Label>
-              <Input id="team_color" name="team_color" placeholder="e.g. white, navy, red" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Attacking which basket?</Label>
-              <Select name="attack_direction" defaultValue="unclear">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="left">Left side</SelectItem>
-                  <SelectItem value="right">Right side</SelectItem>
-                  <SelectItem value="unclear">Not sure</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>What was the result? (optional — big accuracy boost)</Label>
-              <Select name="declared_outcome" defaultValue="unsure">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unsure">Let the AI figure it out</SelectItem>
-                  <SelectItem value="made_shot">Made shot</SelectItem>
-                  <SelectItem value="missed_shot">Missed shot</SelectItem>
-                  <SelectItem value="turnover">Turnover</SelectItem>
-                  <SelectItem value="foul">Foul</SelectItem>
-                  <SelectItem value="defensive_stop">Defensive stop (we were on D)</SelectItem>
-                  <SelectItem value="defensive_breakdown">Got scored on (we were on D)</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                If you tell us how the play ended, the AI focuses on finding and explaining that
-                moment — anything after it is treated as dead ball.
-              </p>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="tracked_player">Focus on one player (optional)</Label>
               <Input
-                id="tracked_player"
-                name="tracked_player"
-                placeholder="Jersey: 'white #23' · Pickup: 'gray hoodie, starts left corner'"
+                id="title"
+                name="title"
+                placeholder={
+                  kind === "jumpshot"
+                    ? "Catch-and-shoot form check"
+                    : kind === "game"
+                      ? "Saturday run at the rec"
+                      : "Q3 · pick-and-roll switch"
+                }
+                required
               />
-              <p className="text-xs text-muted-foreground">
-                Leave empty to analyze the whole team. Describe what's visible from far away —
-                jersey number and color are best; for pickup use shirt/shorts and where you start.
-              </p>
             </div>
+            {kind === "game" && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Game type</Label>
+                <Select name="game_type" defaultValue="pickup">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pickup">Pickup game</SelectItem>
+                    <SelectItem value="organized">Actual game (organized)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {kind === "possession" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="team_color">Your team's jersey color</Label>
+                  <Input id="team_color" name="team_color" placeholder="e.g. white, navy, red" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Attacking which basket?</Label>
+                  <Select name="attack_direction" defaultValue="unclear">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="left">Left side</SelectItem>
+                      <SelectItem value="right">Right side</SelectItem>
+                      <SelectItem value="unclear">Not sure</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>What was the result? (optional — big accuracy boost)</Label>
+                  <Select name="declared_outcome" defaultValue="unsure">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unsure">Let the AI figure it out</SelectItem>
+                      <SelectItem value="made_shot">Made shot</SelectItem>
+                      <SelectItem value="missed_shot">Missed shot</SelectItem>
+                      <SelectItem value="turnover">Turnover</SelectItem>
+                      <SelectItem value="foul">Foul</SelectItem>
+                      <SelectItem value="defensive_stop">Defensive stop (we were on D)</SelectItem>
+                      <SelectItem value="defensive_breakdown">
+                        Got scored on (we were on D)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    If you tell us how the play ended, the AI focuses on finding and explaining that
+                    moment — anything after it is treated as dead ball.
+                  </p>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="tracked_player">Focus on one player (optional)</Label>
+                  <Input
+                    id="tracked_player"
+                    name="tracked_player"
+                    placeholder="Jersey: 'white #23' · Pickup: 'gray hoodie, starts left corner'"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to analyze the whole team. Describe what's visible from far away —
+                    jersey number and color are best; for pickup use shirt/shorts and where you
+                    start.
+                  </p>
+                </div>
+              </>
+            )}
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="notes">Notes for the AI (optional)</Label>
               <Textarea
                 id="notes"
                 name="notes"
                 rows={3}
-                placeholder="Context helps: what was the set, what read did you want, what happened?"
+                placeholder={
+                  kind === "jumpshot"
+                    ? "Anything you're working on? e.g. 'trying to stop the thumb flick'"
+                    : kind === "game"
+                      ? "Who played, final score, anything to remember"
+                      : "Context helps: what was the set, what read did you want, what happened?"
+                }
               />
             </div>
           </div>
@@ -463,9 +580,11 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
               <Progress value={progress} />
               <p className="text-xs text-muted-foreground">
                 {progress < 70
-                  ? "Uploading clip…"
+                  ? "Uploading…"
                   : progress < 100
-                    ? "Running AI breakdown…"
+                    ? kind === "game"
+                      ? "Saving game…"
+                      : "Running AI breakdown…"
                     : "Done"}
               </p>
             </div>
@@ -473,7 +592,13 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
 
           <DialogFooter>
             <Button type="submit" disabled={busy || !file} className="w-full">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upload & analyze"}
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : kind === "game" ? (
+                "Upload game"
+              ) : (
+                "Upload & analyze"
+              )}
             </Button>
           </DialogFooter>
         </form>

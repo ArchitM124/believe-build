@@ -19,7 +19,9 @@ export type Database = {
           end_seconds: number | null;
           error: string | null;
           flagged: boolean;
+          game_type: string | null;
           id: string;
+          kind: string;
           notes: string | null;
           outcome: Database["public"]["Enums"]["play_outcome"];
           player_stats: Json | null;
@@ -48,7 +50,9 @@ export type Database = {
           end_seconds?: number | null;
           error?: string | null;
           flagged?: boolean;
+          game_type?: string | null;
           id?: string;
+          kind?: string;
           notes?: string | null;
           outcome?: Database["public"]["Enums"]["play_outcome"];
           player_stats?: Json | null;
@@ -77,7 +81,9 @@ export type Database = {
           end_seconds?: number | null;
           error?: string | null;
           flagged?: boolean;
+          game_type?: string | null;
           id?: string;
+          kind?: string;
           notes?: string | null;
           outcome?: Database["public"]["Enums"]["play_outcome"];
           player_stats?: Json | null;

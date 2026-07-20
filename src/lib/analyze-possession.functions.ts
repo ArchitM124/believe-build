@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   runPossessionAnalysis,
+  runJumpshotAnalysis,
   resolveModelConfig,
   resolveProviderConfig,
   isOutcome,
@@ -39,6 +40,21 @@ export const analyzePossession = createServerFn({ method: "POST" })
 
     if (pErr || !play) throw new Error("Possession not found");
     if (!play.video_path) throw new Error("No video attached to this possession");
+
+    // Full games are stored, not AI-analyzed (they exceed the inline video
+    // limit). Mark ready with guidance; possessions clipped from the game get
+    // the real analysis. Games count toward unlocking the hidden overall.
+    if (play.kind === "game") {
+      await supabase
+        .from("plays")
+        .update({
+          status: "ready",
+          what_happened:
+            "Full game saved. Whole-game AI breakdown is coming soon — for now, clip your key possessions from this game and upload them as clips to get analysis and build toward your overall.",
+        })
+        .eq("id", play.id);
+      return { ok: true };
+    }
 
     // Concurrency guard: if this possession is already being analyzed and was
     // touched more recently than the stale window, another run owns it — don't
@@ -117,39 +133,50 @@ export const analyzePossession = createServerFn({ method: "POST" })
       throw new Error(msg);
     }
 
-    // --- 2) Run the two-pass analysis ---
+    // --- 2) Run the analysis (jumpshots get the mechanics pipeline) ---
     let result;
     try {
-      // HYBRID: OBSERVER_PROVIDER (+ optional OBSERVER_MODEL) runs Pass 1 on
-      // a different model — e.g. a perception specialist watches the video
-      // while the main provider judges. Unset = same model for both passes.
-      let observer: ModelConfig | undefined;
-      const observerProvider = process.env.OBSERVER_PROVIDER?.trim().toLowerCase();
-      if (observerProvider) {
-        observer = resolveProviderConfig(
-          observerProvider as Provider,
-          process.env,
-          process.env.OBSERVER_MODEL || undefined,
-        );
-      }
-      result = await runPossessionAnalysis({
-        videoDataUrl,
-        videoRemoteUrl,
-        apiKey: modelConfig.apiKey,
-        provider: modelConfig.provider,
-        model: modelConfig.model,
-        observer,
-        context: {
-          role: play.uploader_role ?? "coach",
-          title: play.title,
+      if (play.kind === "jumpshot") {
+        result = await runJumpshotAnalysis({
+          videoDataUrl,
+          videoRemoteUrl,
+          apiKey: modelConfig.apiKey,
+          provider: modelConfig.provider,
+          model: modelConfig.model,
           notes: play.notes,
-          teamColor: play.team_color,
-          attackDirection: play.attack_direction,
-          durationSec: play.duration_seconds ?? 0,
-          trackedPlayer: play.tracked_player,
-          declaredOutcome: play.declared_outcome,
-        },
-      });
+        });
+      } else {
+        // HYBRID: OBSERVER_PROVIDER (+ optional OBSERVER_MODEL) runs Pass 1 on
+        // a different model — e.g. a perception specialist watches the video
+        // while the main provider judges. Unset = same model for both passes.
+        let observer: ModelConfig | undefined;
+        const observerProvider = process.env.OBSERVER_PROVIDER?.trim().toLowerCase();
+        if (observerProvider) {
+          observer = resolveProviderConfig(
+            observerProvider as Provider,
+            process.env,
+            process.env.OBSERVER_MODEL || undefined,
+          );
+        }
+        result = await runPossessionAnalysis({
+          videoDataUrl,
+          videoRemoteUrl,
+          apiKey: modelConfig.apiKey,
+          provider: modelConfig.provider,
+          model: modelConfig.model,
+          observer,
+          context: {
+            role: play.uploader_role ?? "coach",
+            title: play.title,
+            notes: play.notes,
+            teamColor: play.team_color,
+            attackDirection: play.attack_direction,
+            durationSec: play.duration_seconds ?? 0,
+            trackedPlayer: play.tracked_player,
+            declaredOutcome: play.declared_outcome,
+          },
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "AI call failed";
       await supabase.from("plays").update({ status: "failed", error: msg }).eq("id", play.id);

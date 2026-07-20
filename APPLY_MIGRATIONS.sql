@@ -91,3 +91,9 @@ CREATE INDEX IF NOT EXISTS ratings_user_idx ON public.ratings(user_id, created_a
 
 -- ---- Done. Ask PostgREST to reload its schema cache ------------------------
 NOTIFY pgrst, 'reload schema';
+
+-- ---- 7) Upload kinds (possession / jumpshot / game) ------------------------
+ALTER TABLE public.plays
+  ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'possession',
+  ADD COLUMN IF NOT EXISTS game_type text;
+NOTIFY pgrst, 'reload schema';

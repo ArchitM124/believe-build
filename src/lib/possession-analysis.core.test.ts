@@ -450,3 +450,58 @@ test("runPossessionAnalysis surfaces a friendly error on rate limit (429)", asyn
     }),
   ).rejects.toThrow(/rate limit/i);
 });
+
+// ---- jumpshot mechanics pipeline ----------------------------------------
+
+test("jumpshot prompts: harmful-flaws-only philosophy, thumb flicks, sound-verdict allowed", async () => {
+  const { JUMPSHOT_OBSERVE_SYSTEM, JUMPSHOT_JUDGE_SYSTEM } =
+    await import("./possession-analysis.core");
+  expect(JUMPSHOT_OBSERVE_SYSTEM).toContain("thumb-flick");
+  expect(JUMPSHOT_OBSERVE_SYSTEM).toContain("Never infer a flaw you cannot see");
+  expect(JUMPSHOT_JUDGE_SYSTEM).toContain("form diversity is legitimate");
+  expect(JUMPSHOT_JUDGE_SYSTEM).toContain("thumb flick");
+  expect(JUMPSHOT_JUDGE_SYSTEM).toContain('"Your mechanics look sound" is a valid');
+  expect(JUMPSHOT_JUDGE_SYSTEM).toContain("SECOND PERSON");
+  expect(JUMPSHOT_JUDGE_SYSTEM).toContain("never invent flaws");
+});
+
+test("runJumpshotAnalysis maps the mechanics verdict into AnalysisResult", async () => {
+  const { runJumpshotAnalysis } = await import("./possession-analysis.core");
+  const openaiResponse = (obj: unknown): Response =>
+    ({
+      status: 200,
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(obj) } }] }),
+      text: async () => "",
+    }) as unknown as Response;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    if (calls === 1) {
+      return openaiResponse({
+        readable: true,
+        observations: [{ t: "0:01", desc: "guide-hand thumb pushes at release", certain: true }],
+      });
+    }
+    return openaiResponse({
+      shot_result: "missed",
+      form_summary: "Your base is square; your guide-hand thumb pushes at release (~0:01).",
+      whats_working: "Your base and dip are consistent.",
+      harmful_flaws: "Guide-hand thumb flick at release adds side-spin (~0:01).",
+      fix_drills: "One-hand form shooting from 5 feet, guide hand behind your back.",
+      confidence: "high",
+    });
+  }) as unknown as typeof fetch;
+
+  const r = await runJumpshotAnalysis({
+    videoDataUrl: "data:video/mp4;base64,AAAA",
+    apiKey: "k",
+    provider: "lovable",
+  });
+  expect(calls).toBe(2);
+  expect(r.outcome).toBe("missed_shot");
+  expect(r.what_went_wrong).toContain("thumb flick");
+  expect(r.alternative).toContain("form shooting");
+  expect(r.confidence).toBe("high");
+  expect(r.player_stats).toBe(null);
+});

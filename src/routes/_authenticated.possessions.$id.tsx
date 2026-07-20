@@ -29,6 +29,8 @@ type Play = {
   id: string;
   title: string | null;
   notes: string | null;
+  kind: string;
+  game_type: string | null;
   status: "uploading" | "processing" | "ready" | "failed";
   error: string | null;
   outcome: string;
@@ -141,7 +143,7 @@ function PossessionDetail() {
           <ArrowLeft className="h-4 w-4" /> All possessions
         </Link>
         <div className="flex gap-2">
-          {play.status === "ready" && (
+          {play.status === "ready" && play.kind !== "game" && (
             <>
               <Button variant="outline" size="sm" onClick={copyShare}>
                 <Share2 className="mr-1.5 h-3.5 w-3.5" /> Share
@@ -162,6 +164,15 @@ function PossessionDetail() {
 
       <div className="mt-4">
         <div className="flex items-center gap-2">
+          {play.kind !== "possession" && (
+            <Badge variant="secondary" className="text-[10px] uppercase">
+              {play.kind === "game"
+                ? play.game_type === "organized"
+                  ? "game"
+                  : "pickup game"
+                : "jumpshot"}
+            </Badge>
+          )}
           {play.tracked_player && (
             <Badge variant="outline" className="text-[10px]">
               Focus: {play.tracked_player}
@@ -264,13 +275,25 @@ function PossessionDetail() {
 
           <div className="mt-6 space-y-4">
             {play.what_went_right && (
-              <Section label="What went right" body={play.what_went_right} tone="good" />
+              <Section
+                label={play.kind === "jumpshot" ? "What's working" : "What went right"}
+                body={play.what_went_right}
+                tone="good"
+              />
             )}
             {play.what_went_wrong && (
-              <Section label="What went wrong" body={play.what_went_wrong} tone="bad" />
+              <Section
+                label={play.kind === "jumpshot" ? "Costing you makes" : "What went wrong"}
+                body={play.what_went_wrong}
+                tone="bad"
+              />
             )}
             {play.alternative && (
-              <Section label="Do differently next time" body={play.alternative} tone="warn" />
+              <Section
+                label={play.kind === "jumpshot" ? "Drills to fix it" : "Do differently next time"}
+                body={play.alternative}
+                tone="warn"
+              />
             )}
           </div>
         </div>

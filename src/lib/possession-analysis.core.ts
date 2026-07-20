@@ -462,6 +462,7 @@ Hard rules:
   · "wide open" / "heavily contested" → state the defender distance you can actually see instead of the judgment
   · court spots (corner, wing, elbow) → only with visible landmarks (arc, paint, baseline); else the general area
   A generic TRUE sentence always beats a specific guess.
+- BODY POSTURE: when clearly visible, record posture facts — defensive stance height (upright vs sitting low), whether the defender slides or crosses feet, passing mechanics (two-hand step-through vs lazy one-hand flick), box-out contact on rebounds, wide vs narrow base. Same claim law: only when clearly visible.
 - PLAY-STOPPAGE SIGNALS: watch for signs the play went DEAD mid-clip — most players simultaneously stopping, relaxing, or reversing direction; defenders no longer contesting; the ball casually retrieved or walked back. Record any such signal as its own observation with a timestamp. A basket scored uncontested AFTER such a signal is likely a dead-ball shot (players often finish anyway after a whistle or out-of-bounds) — note that explicitly rather than reporting it as the possession's result.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
@@ -572,6 +573,7 @@ PERSONAL COACHING MODE for the tracked player ("${tracked}"):
 - SPEAK TO THE PLAYER IN SECOND PERSON: in every field, address the tracked player as "you" — "You attacked the middle", "You should angle your stance" — never "the tracked player" or third-person descriptions of them. Other players stay described by jersey ("the defender in white"). On first mention you may anchor identity once ("you (#5 in blue)").
 - what_went_right / what_went_wrong / alternative must be about YOUR decisions, positioning, effort, and reads — on and off the ball — not the team in general. what_happened still summarizes the possession, but center your involvement in it.
 - Apply the role-awareness rules to them: if their job on this possession was to space, screen, or hold weak-side, doing that is correct — do not criticize it.
+- POSTURE: when the log records posture facts about you (upright defensive stance, crossed feet, lazy one-hand pass, no box-out), coach them concretely — stance height and footwork on defense, two-hand passing mechanics, base width. Only from the log; never assume posture that wasn't observed.
 - If the log says the tracked player was not found (tracked_player_found: false) or their involvement is mostly uncertain, say plainly that they could not be identified in this clip, keep all personal claims out, and set confidence "low".`
     : "";
   return `Here is the verified observation log for one possession.
@@ -735,4 +737,94 @@ export async function runPossessionAnalysis(params: {
   );
 
   return normalizeAnalysis(obs, judged, Boolean(context.trackedPlayer?.trim()));
+}
+
+// ---- Jumpshot mechanics pipeline ----------------------------------------
+
+export const JUMPSHOT_OBSERVE_SYSTEM = `You are a meticulous shooting-form observer watching a short clip of ONE player's jumpshot (possibly several reps). Report ONLY visible mechanics, moment by moment with timestamps. Refer to the player as "the shooter". Cover, when visible: base (feet width, alignment, stagger) at the catch/set; knee bend depth; the dip; set point location; elbow position relative to the shoulder line; guide-hand placement and whether it moves, pushes, or thumb-flicks at release; release timing relative to jump peak; wrist snap and follow-through hold; landing spot vs takeoff (drift); head/eyes. Note whether each rep goes in ONLY if the rim result is visible. The claim law applies: report only what you SEE; if the camera angle hides something (e.g. guide hand blocked), say exactly that with "certain": false. Never infer a flaw you cannot see.`;
+
+export const JUMPSHOT_JUDGE_SYSTEM = `You are PlayIQ's shooting coach, working from a VERIFIED mechanics log (you did not watch the video). Great shooters have wildly different forms — form diversity is legitimate, and style is not a flaw. You flag ONLY mechanics with a clear causal path to misses or inconsistency, e.g.: guide-hand thumb flick or push at release (adds side-spin → left/right misses), elbow far outside the shoulder line drifting the ball, no leg drive / energy leak (short misses), inconsistent set point or a hitch across reps, crossed or drifting base, head dropping, cut-off follow-through. For every flaw you flag: cite the timestamp, the visible evidence, WHY it costs makes (which miss it produces), and one concrete drill to fix it. If a quirk is unusual but consistent and not costing anything (low set point, narrow stance), SAY it is fine. "Your mechanics look sound" is a valid and welcome verdict — never invent flaws to seem thorough. Speak to the shooter in SECOND PERSON ("Your guide-hand thumb pushes the ball at release (~0:02)"). If the log is thin or the angle hid key mechanics, say what could not be assessed and set confidence low.`;
+
+export function jumpshotJudgeUserText(observation: ObservationResponse): string {
+  return `Mechanics log for the jumpshot clip (JSON):
+${JSON.stringify(
+  {
+    readable: observation.readable ?? true,
+    observations: observation.observations ?? [],
+  },
+  null,
+  2,
+)}
+
+Return ONLY valid JSON — no prose, no markdown fences:
+{
+  "shot_result": "made"|"missed"|"unclear",   // only if the rim result was in the log
+  "form_summary": string,      // 2-4 sentences: your form as observed, timestamps cited, second person
+  "whats_working": string,     // mechanics that are solid or fine-though-unusual. "" if none assessable.
+  "harmful_flaws": string,     // ONLY flaws with a causal path to misses: evidence + timestamp + why it costs makes. "" if mechanics are sound.
+  "fix_drills": string,        // one concrete drill per flagged flaw. "" if nothing to fix.
+  "confidence": "low"|"medium"|"high"
+}`;
+}
+
+type JumpshotJudgeResponse = {
+  shot_result?: string;
+  form_summary?: string;
+  whats_working?: string;
+  harmful_flaws?: string;
+  fix_drills?: string;
+  confidence?: string;
+};
+
+export async function runJumpshotAnalysis(params: {
+  videoDataUrl: string;
+  apiKey: string;
+  provider?: Provider;
+  model?: string;
+  videoRemoteUrl?: string;
+  notes?: string | null;
+}): Promise<AnalysisResult> {
+  const cfg: ModelConfig = {
+    provider: params.provider ?? "lovable",
+    apiKey: params.apiKey,
+    model: params.model,
+  };
+  const video = parseDataUrl(params.videoDataUrl, params.videoRemoteUrl);
+  const observeUser = `Observe this jumpshot clip rep by rep.${params.notes?.trim() ? `\nShooter's note: ${params.notes.trim()}` : ""}
+
+Return ONLY valid JSON — no prose, no markdown fences:
+{
+  "readable": boolean,               // false if too blurry/short/wrong angle to assess mechanics
+  "observations": [ { "t": string, "desc": string, "certain": boolean } ]
+}`;
+  const obs = await callModelJson<ObservationResponse>(
+    cfg,
+    JUMPSHOT_OBSERVE_SYSTEM,
+    observeUser,
+    video,
+    0.15,
+  );
+  const judged = await callModelJson<JumpshotJudgeResponse>(
+    cfg,
+    JUMPSHOT_JUDGE_SYSTEM,
+    jumpshotJudgeUserText(obs),
+    null,
+    0.2,
+  );
+  const readable = obs.readable !== false;
+  const conf = String(judged.confidence ?? "low") as Confidence;
+  const result = String(judged.shot_result ?? "unclear");
+  return {
+    outcome: result === "made" ? "made_shot" : result === "missed" ? "missed_shot" : "other",
+    what_happened: String(judged.form_summary ?? "").slice(0, 2000),
+    what_went_right: judged.whats_working ? String(judged.whats_working).slice(0, 2000) : "",
+    what_went_wrong: judged.harmful_flaws ? String(judged.harmful_flaws).slice(0, 2000) : "",
+    alternative: judged.fix_drills ? String(judged.fix_drills).slice(0, 2000) : "",
+    confidence: !readable ? "low" : CONFIDENCES.has(conf) ? conf : "low",
+    flagged: false,
+    readable,
+    observations: normalizeObservations(obs.observations),
+    tracked_player_found: null,
+    player_stats: null,
+  };
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Gauge, Sparkles } from "lucide-react";
+import { Loader2, Gauge, Sparkles, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { generatePlayerRating } from "@/lib/rating.functions";
 import { MIN_POSSESSIONS } from "@/lib/player-rating";
@@ -42,6 +42,9 @@ type RatingRow = {
   created_at: string;
 };
 
+/** Games (pickup or organized) required before your overall is revealed. */
+export const GAMES_TO_UNLOCK = 5;
+
 const SUB_LABEL: Record<string, string> = {
   scoring: "Scoring",
   ball_security: "Ball security",
@@ -68,6 +71,19 @@ function RatingPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as TrackedPlay[];
+    },
+  });
+
+  const { data: gamesCount } = useQuery({
+    queryKey: ["games-count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("plays")
+        .select("id", { count: "exact", head: true })
+        .eq("kind", "game")
+        .eq("status", "ready");
+      if (error) throw error;
+      return count ?? 0;
     },
   });
 
@@ -123,6 +139,21 @@ function RatingPage() {
         Pick at least {MIN_POSSESSIONS} analyzed clips of the same player. The numbers are computed
         from counted events on film — the AI writes the scouting report, not the score.
       </p>
+
+      {(gamesCount ?? 0) < GAMES_TO_UNLOCK && (
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-card/60 p-4">
+          <Lock className="h-4 w-4 shrink-0 text-primary" />
+          <div className="text-sm">
+            <span className="font-medium">
+              Your overall is hidden until you upload {GAMES_TO_UNLOCK} games.
+            </span>{" "}
+            <span className="text-muted-foreground">
+              {gamesCount ?? 0}/{GAMES_TO_UNLOCK} uploaded — pickup or organized both count.
+              Sub-scores and scouting reports stay visible so you can track what to work on.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Clip picker */}
       <section className="mt-8 rounded-xl border border-border bg-card p-5">
@@ -202,14 +233,29 @@ function RatingPage() {
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
-          (ratings ?? []).map((r) => <RatingCard key={r.id} r={r} />)
+          (ratings ?? []).map((r) => (
+            <RatingCard
+              key={r.id}
+              r={r}
+              locked={(gamesCount ?? 0) < GAMES_TO_UNLOCK}
+              gamesCount={gamesCount ?? 0}
+            />
+          ))
         )}
       </section>
     </main>
   );
 }
 
-function RatingCard({ r }: { r: RatingRow }) {
+function RatingCard({
+  r,
+  locked,
+  gamesCount,
+}: {
+  r: RatingRow;
+  locked: boolean;
+  gamesCount: number;
+}) {
   const report = r.report ?? {};
   return (
     <div className="rounded-xl border border-border bg-card p-6">
@@ -222,9 +268,18 @@ function RatingCard({ r }: { r: RatingRow }) {
           )}
         </div>
         <div className="text-right">
-          <div className="text-5xl font-bold tracking-tight text-primary">{r.overall}</div>
+          {locked ? (
+            <div className="grid place-items-center rounded-lg border border-dashed border-border px-4 py-2">
+              <Lock className="h-6 w-6 text-primary" />
+              <div className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                {gamesCount}/{GAMES_TO_UNLOCK} games
+              </div>
+            </div>
+          ) : (
+            <div className="text-5xl font-bold tracking-tight text-primary">{r.overall}</div>
+          )}
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            overall · {r.possessions_used} possessions
+            {locked ? "overall locked" : "overall"} · {r.possessions_used} possessions
           </div>
         </div>
       </div>
