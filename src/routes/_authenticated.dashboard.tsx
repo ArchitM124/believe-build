@@ -134,9 +134,13 @@ function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-primary">Film room</div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your possessions</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your film</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Signed in as {user?.email}. Upload one possession at a time.
+            Upload a full game, a single clip, or a jumpshot. Everything you track feeds your{" "}
+            <Link to="/rating" className="text-primary hover:underline">
+              rating
+            </Link>
+            .
           </p>
         </div>
         <UploadDialog onDone={() => qc.invalidateQueries({ queryKey: ["possessions"] })} />
@@ -239,9 +243,9 @@ function EmptyState({ onDone }: { onDone: () => void }) {
   return (
     <div className="rounded-xl border border-dashed border-border p-12 text-center court-grid">
       <Film className="mx-auto h-10 w-10 text-primary" />
-      <h3 className="mt-4 text-xl font-semibold">No possessions yet</h3>
+      <h3 className="mt-4 text-xl font-semibold">No film yet</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Upload one clip — the AI breaks it down for you.
+        Upload a full game to get your rating — or a single clip or jumpshot to start.
       </p>
       <div className="mt-6">
         <UploadDialog onDone={onDone} />

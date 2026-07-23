@@ -151,8 +151,9 @@ function RatingPage() {
       <div className="text-xs uppercase tracking-[0.3em] text-primary">Player rating</div>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your 2K-style rating</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Pick at least {MIN_POSSESSIONS} analyzed clips of the same player. The numbers are computed
-        from counted events on film — the AI writes the scouting report, not the score.
+        Pick a game (it counts for all its possessions) or at least {MIN_POSSESSIONS} clips of the
+        same player. Every number is computed from counted events on film — the AI counts, the code
+        scores. You get an overall, a tier, and an archetype.
       </p>
 
       {(gamesCount ?? 0) < GAMES_TO_UNLOCK && (

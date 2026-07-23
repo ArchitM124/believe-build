@@ -71,17 +71,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "PlayIQ — AI Basketball Film Analysis" },
+      { title: "PlayIQ — Your Basketball Rating, From Real Film" },
       {
         name: "description",
         content:
-          "Upload game film. Get clip-by-clip coaching feedback in minutes — what happened, what went right, what went wrong, and what to do differently.",
+          "Upload your game. PlayIQ's AI watches every possession you're in and builds a 2K-style rating out of 99 — with a tier, an archetype, and honest film to back it up. Pickup or organized.",
       },
       { name: "author", content: "PlayIQ" },
-      { property: "og:title", content: "PlayIQ — AI Basketball Film Analysis" },
+      { property: "og:title", content: "PlayIQ — Your Basketball Rating, From Real Film" },
       {
         property: "og:description",
-        content: "Upload game film. Get clip-by-clip coaching feedback in minutes.",
+        content:
+          "Upload your game. Get a 2K-style rating out of 99 — tier, archetype, and the film to back it up.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

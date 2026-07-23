@@ -35,14 +35,22 @@ function AuthLayout() {
             </div>
             <span className="font-semibold tracking-tight">PlayIQ</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Link
+              to="/dashboard"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground [&.active]:bg-secondary [&.active]:text-foreground"
+            >
+              Film
+            </Link>
             <Link
               to="/rating"
-              className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground [&.active]:bg-secondary [&.active]:text-foreground"
             >
               My rating
             </Link>
-            <span className="hidden text-xs text-muted-foreground sm:inline">{user.email}</span>
+            <span className="mx-1 hidden text-xs text-muted-foreground lg:inline">
+              {user.email}
+            </span>
             <Button
               variant="ghost"
               size="sm"

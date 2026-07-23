@@ -64,12 +64,13 @@ function AuthPage() {
           <span className="text-lg font-semibold">PlayIQ</span>
         </Link>
         <div>
-          <div className="text-xs uppercase tracking-[0.3em] text-primary">Coach's cut</div>
+          <div className="text-xs uppercase tracking-[0.3em] text-primary">Get scouted</div>
           <h1 className="mt-3 text-4xl font-semibold leading-tight text-balance">
-            Every possession, broken down. Before your next practice.
+            Upload your game. Get your rating out of 99.
           </h1>
           <p className="mt-4 max-w-md text-muted-foreground">
-            Sign in to upload your game and get an AI film session sent to your dashboard.
+            Sign in to upload a game, tell the AI which player is you, and get a 2K-style rating —
+            tier, archetype, and the film to back it up.
           </p>
         </div>
         <p className="text-xs text-muted-foreground">Pilot access · Basketball only</p>
@@ -79,7 +80,7 @@ function AuthPage() {
         <div className="w-full max-w-sm">
           <h2 className="text-2xl font-semibold">Welcome</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Sign in or create your coach account.
+            Sign in or create your account to get your rating.
           </p>
 
           <Tabs defaultValue="signin" className="mt-8">
