@@ -229,6 +229,83 @@ test("playerArchetype names the shape of the sub-scores", () => {
   ).toBe("Menace");
 });
 
+test("style hints split the base archetypes into distinct, unique labels", () => {
+  const scorer = {
+    scoring: 85,
+    ball_security: 75,
+    playmaking: 60,
+    decision_making: 80,
+    defense: null,
+    activity: 78,
+  };
+  const h = (o: Partial<Parameters<typeof playerArchetype>[1]> = {}) => ({
+    usage: "medium" as const,
+    shooter: false,
+    cutter: false,
+    lockdown: false,
+    ...o,
+  });
+
+  // Scoring-led: how you score names you.
+  expect(playerArchetype(scorer, h({ shooter: true }))).toBe("Sharpshooter");
+  expect(playerArchetype(scorer, h({ cutter: true }))).toBe("Cutter");
+  expect(playerArchetype(scorer, h({ usage: "high" }))).toBe("Bucket Getter");
+  expect(playerArchetype(scorer, h({ usage: "low" }))).toBe("Microwave");
+  expect(playerArchetype({ ...scorer, playmaking: 78 }, h())).toBe("Shot Creator");
+  expect(playerArchetype({ ...scorer, defense: 80 }, h())).toBe("Two-Way Wing");
+
+  // Playmaking-led.
+  const dime = {
+    scoring: 62,
+    ball_security: 76,
+    playmaking: 88,
+    decision_making: 82,
+    defense: null,
+    activity: 85,
+  };
+  expect(playerArchetype(dime, h({ usage: "high" }))).toBe("Floor General");
+  expect(playerArchetype(dime, h({ usage: "low" }))).toBe("Connector");
+  expect(playerArchetype({ ...dime, scoring: 76 }, h())).toBe("Lead Guard");
+  expect(playerArchetype({ ...dime, defense: 78 }, h())).toBe("Two-Way Guard");
+
+  // Defense-led.
+  const stopper = {
+    scoring: 60,
+    ball_security: 74,
+    playmaking: 63,
+    decision_making: 70,
+    defense: 86,
+    activity: 80,
+  };
+  expect(playerArchetype(stopper, h())).toBe("Menace");
+  expect(playerArchetype(stopper, h({ lockdown: true }))).toBe("Lockdown");
+  expect(playerArchetype(stopper, h({ usage: "low" }))).toBe("Anchor");
+
+  // No standout skill → motor / role labels.
+  const grinder = {
+    scoring: 58,
+    ball_security: 72,
+    playmaking: 60,
+    decision_making: 66,
+    defense: null,
+    activity: 88,
+  };
+  expect(playerArchetype(grinder, h({ usage: "high" }))).toBe("Motor");
+  expect(playerArchetype(grinder, h({ usage: "low" }))).toBe("Role Player");
+  expect(playerArchetype({ ...grinder, defense: 60 }, h({ lockdown: true }))).toBe("Pest");
+
+  // Balanced strengths, low usage → Glue Guy.
+  const balanced = {
+    scoring: 72,
+    ball_security: 75,
+    playmaking: 70,
+    decision_making: 74,
+    defense: 73,
+    activity: 70,
+  };
+  expect(playerArchetype(balanced, h({ usage: "low" }))).toBe("Glue Guy");
+});
+
 test("computeRating result carries a tier and archetype consistent with the overall", () => {
   const r = computeRating([
     poss({ shot: "made", good_reads: 1 }),

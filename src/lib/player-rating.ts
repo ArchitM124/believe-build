@@ -100,11 +100,33 @@ export function ratingTier(overall: number): string {
 }
 
 /**
- * Name the player's archetype from the SHAPE of the sub-scores — pure code, no
- * AI, so it's free and consistent. These labels are the shareable, braggable
- * part; rename them here without touching any math.
+ * STYLE HINTS — HOW a player produces, read from the form tallies. These turn a
+ * generic "Bucket Getter" into a "Sharpshooter" vs a "Cutter", etc. They're the
+ * softest signal (form), so they only refine the label, never the number.
  */
-export function playerArchetype(sub: SubScores): string {
+export type ArchetypeHints = {
+  usage: "high" | "medium" | "low";
+  shooter: boolean; // makes come with clean jumpshot form
+  cutter: boolean; // works off the ball
+  lockdown: boolean; // sits low and slides on defense
+};
+
+const NEUTRAL_HINTS: ArchetypeHints = {
+  usage: "medium",
+  shooter: false,
+  cutter: false,
+  lockdown: false,
+};
+
+/**
+ * Name the player's archetype from the SHAPE of the sub-scores plus optional
+ * style hints — pure code, no AI, so it's free and consistent. These labels are
+ * the shareable, braggable part; rename them here without touching any math.
+ *
+ * Priority: turnover-prone → no-real-strength → balanced → the top identity
+ * facet (scoring / playmaking / defense), refined by how they produce.
+ */
+export function playerArchetype(sub: SubScores, hints: ArchetypeHints = NEUTRAL_HINTS): string {
   // Turnover-prone overrides everything — the loose-handle gambler.
   if (sub.ball_security < 60) return "Gambler";
 
@@ -118,17 +140,39 @@ export function playerArchetype(sub: SubScores): string {
   if (present.length === 0) return "All-Around";
 
   present.sort((a, b) => b.v - a.v);
-  const spread = present[0].v - present[present.length - 1].v;
-  if (present.length > 1 && spread <= 5) return "All-Around"; // no real separation
+  const top = present[0];
+  const spread = top.v - present[present.length - 1].v;
 
-  const twoWay = sub.defense !== null && sub.defense >= 72;
-  switch (present[0].k) {
+  // No identity skill stands out at all — labeled by motor, not by skill.
+  if (top.v < 62) {
+    if (hints.lockdown) return "Pest"; // little offense, but a nuisance on D
+    return hints.usage === "low" ? "Role Player" : "Motor";
+  }
+
+  // Multiple real strengths, none separating — a do-it-all.
+  if (present.length > 1 && spread <= 5) {
+    return hints.usage === "low" ? "Glue Guy" : "All-Around";
+  }
+
+  const goodD = sub.defense !== null && sub.defense >= 72;
+  const scoresToo = sub.scoring !== null && sub.scoring >= 70;
+  const playmakesToo = sub.playmaking >= 70;
+
+  switch (top.k) {
     case "scoring":
-      return twoWay ? "Two-Way Wing" : "Bucket Getter";
+      if (goodD) return "Two-Way Wing";
+      if (playmakesToo) return "Shot Creator"; // scores and sets up
+      if (hints.shooter) return "Sharpshooter";
+      if (hints.cutter) return "Cutter";
+      return hints.usage === "low" ? "Microwave" : "Bucket Getter";
     case "playmaking":
-      return "Floor General";
+      if (goodD) return "Two-Way Guard";
+      if (scoresToo) return "Lead Guard";
+      return hints.usage === "low" ? "Connector" : "Floor General";
     case "defense":
-      return "Menace";
+      if (scoresToo || playmakesToo) return "Two-Way Wing";
+      if (hints.lockdown) return "Lockdown";
+      return hints.usage === "low" ? "Anchor" : "Menace";
     default:
       return "All-Around";
   }
@@ -239,12 +283,27 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
         : `drifts / ball-watches off the ball (${passiveOff} possession${passiveOff === 1 ? "" : "s"})`,
     );
 
+  // Style hints for the archetype — HOW they produced, from usage and form.
+  const touches = involved / n;
+  const usage: ArchetypeHints["usage"] =
+    touches <= 0.5
+      ? "low"
+      : touches >= 0.8 && (shots / n >= 0.35 || goodReads / n >= 0.5 || turnovers / n >= 0.25)
+        ? "high"
+        : "medium";
+  const hints: ArchetypeHints = {
+    usage,
+    shooter: cleanShots >= 2 && cleanShots > flawShots,
+    cutter: activeOff >= 2 && activeOff > passiveOff,
+    lockdown: lowStance >= 2 && lowStance > highStance,
+  };
+
   return {
     overall,
     subScores,
     evidence,
     possessions: n,
     tier: ratingTier(overall),
-    archetype: playerArchetype(subScores),
+    archetype: playerArchetype(subScores, hints),
   };
 }
