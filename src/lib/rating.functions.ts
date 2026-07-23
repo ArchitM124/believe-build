@@ -34,12 +34,16 @@ function reportUser(params: {
   archetype: string;
   subScores: Record<string, number | null>;
   evidence: string[];
+  provisional: boolean;
 }): string {
+  const provisionalNote = params.provisional
+    ? `\nPROVISIONAL: this player had limited countable involvement on film. Keep every claim modest, do NOT overstate, lead by noting the read is provisional, and make one "improve" item about getting more touches/film so the rating can sharpen. Grade them on what they DID show (defense, effort, not turning it over) — never criticize them for a role they didn't have (e.g. don't call a spacer a bad playmaker).`
+    : "";
   return `Player: ${params.trackedPlayer}
 Film: ${params.possessions} analyzed possessions
 OVERALL (final): ${params.overall} — tier: ${params.tier} — archetype: ${params.archetype}
-Sub-scores (final): ${JSON.stringify(params.subScores)}
-Counted evidence: ${params.evidence.join("; ")}
+Sub-scores (final, null = no chance to show it on this film): ${JSON.stringify(params.subScores)}
+Counted evidence: ${params.evidence.join("; ")}${provisionalNote}
 
 Return ONLY valid JSON — no prose, no markdown fences:
 {
@@ -114,6 +118,7 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
           archetype: rating.archetype,
           subScores: rating.subScores,
           evidence: rating.evidence,
+          provisional: rating.provisional,
         }),
       });
       const parsed = parseModelJson<Partial<ScoutingReport>>(raw);
@@ -143,6 +148,7 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
           evidence: rating.evidence,
           tier: rating.tier,
           archetype: rating.archetype,
+          provisional: rating.provisional,
         } as unknown as Json,
       })
       .select()

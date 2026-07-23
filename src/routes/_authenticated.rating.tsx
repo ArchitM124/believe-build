@@ -42,6 +42,7 @@ type RatingRow = {
     evidence?: string[];
     tier?: string;
     archetype?: string;
+    provisional?: boolean;
   } | null;
   created_at: string;
 };
@@ -301,12 +302,20 @@ function RatingCard({
             </div>
           ) : (
             <>
-              <div className="text-5xl font-bold tracking-tight text-primary">{r.overall}</div>
-              {report.tier && (
+              <div
+                className={`text-5xl font-bold tracking-tight ${report.provisional ? "text-muted-foreground/70" : "text-primary"}`}
+              >
+                {r.overall}
+              </div>
+              {report.provisional ? (
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--warn)]">
+                  Provisional
+                </div>
+              ) : report.tier ? (
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">
                   {report.tier}
                 </div>
-              )}
+              ) : null}
             </>
           )}
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -314,6 +323,14 @@ function RatingCard({
           </div>
         </div>
       </div>
+
+      {!locked && report.provisional && (
+        <div className="mt-4 rounded-lg border border-[color:var(--warn)]/40 bg-[color:var(--warn)]/5 p-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Provisional read.</span> You didn't have
+          much countable involvement in this film, so this is graded on the little we saw — it
+          sharpens as you upload more games and clips of yourself.
+        </div>
+      )}
 
       <div className="mt-5 grid gap-x-8 gap-y-3 sm:grid-cols-2">
         {Object.entries(SUB_LABEL).map(([key, label]) => {

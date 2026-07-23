@@ -57,11 +57,30 @@ test("VOLUME MOVES THE NUMBER: the same play, more possessions, reaches further 
   expect(rough16).toBeLessThanOrEqual(55);
 });
 
-test("an unknown player with clean-but-empty film sits in the Solid baseline", () => {
-  const r = computeRating(rep(3)); // involved, but nothing else recorded
-  expect(r.overall).toBeGreaterThanOrEqual(65);
-  expect(r.overall).toBeLessThanOrEqual(74);
-  expect(r.tier).toBe("Solid");
+test("a player who barely did anything countable is flagged provisional, not falsely graded", () => {
+  const r = computeRating(rep(3)); // involved, but no shots/turnovers/reads/defense
+  expect(r.provisional).toBe(true);
+  // Nothing to grade offense or defense on — those facets are null, not a low
+  // number that would unfairly punish a role they never had.
+  expect(r.subScores.scoring).toBe(null);
+  expect(r.subScores.ball_security).toBe(null);
+  expect(r.subScores.playmaking).toBe(null);
+  expect(r.subScores.defense).toBe(null);
+});
+
+test("a low-usage glue guy is graded on defense + security, and rates Solid+", () => {
+  // 3 shots (1 make), never turns it over, locks up on D, moves off the ball.
+  const film = [
+    ...rep(3, { shot: "made", off_ball: "active" }),
+    ...rep(2, { shot: "missed" }),
+    ...rep(10, { defense: "positive", def_form: "low_slides", off_ball: "active" }),
+  ];
+  const r = computeRating(film);
+  expect(r.provisional).toBe(false); // plenty of defensive evidence
+  expect(r.subScores.defense).not.toBe(null);
+  expect(r.overall).toBeGreaterThanOrEqual(65); // not punished for low usage
+  // Identity comes from what they did well, not from scoring volume.
+  expect(["Menace", "Lockdown", "Anchor", "Two-Way Wing", "All-Around"]).toContain(r.archetype);
 });
 
 test("no shots taken → scoring is null and overall reweights around it", () => {
@@ -134,7 +153,7 @@ test("clean shooting form lifts scoring; a flaw tempers it — but only by a nud
 test("a high, exposed handle lowers ball security vs a low, controlled one", () => {
   const low = computeRating(rep(8, { handle: "low_controlled" }));
   const high = computeRating(rep(8, { handle: "high_exposed" }));
-  expect(low.subScores.ball_security > high.subScores.ball_security).toBe(true);
+  expect(low.subScores.ball_security! > high.subScores.ball_security!).toBe(true);
   expect(high.evidence.join(" ")).toContain("high, exposed handle");
 });
 

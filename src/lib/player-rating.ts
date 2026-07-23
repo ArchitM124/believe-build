@@ -30,10 +30,15 @@ import type { PlayerStats } from "./possession-analysis.core";
  */
 
 export type SubScores = {
+  // Every skill facet is null when the film gave no chance to show it — a
+  // non-shooter has null scoring, a player who never handled the ball has null
+  // ball_security/playmaking/decision_making, a player who never defended on
+  // camera has null defense. The overall reweights around whatever's present,
+  // so a role player is graded on their role, not penalized for the rest.
   scoring: number | null;
-  ball_security: number;
-  playmaking: number;
-  decision_making: number;
+  ball_security: number | null;
+  playmaking: number | null;
+  decision_making: number | null;
   defense: number | null;
   activity: number;
 };
@@ -45,6 +50,9 @@ export type RatingResult = {
   possessions: number;
   tier: string;
   archetype: string;
+  /** True when there's too little countable film to trust the number — a
+   *  low-involvement player. The UI shows it as a provisional read. */
+  provisional: boolean;
 };
 
 export const MIN_POSSESSIONS = 3;
@@ -128,7 +136,7 @@ const NEUTRAL_HINTS: ArchetypeHints = {
  */
 export function playerArchetype(sub: SubScores, hints: ArchetypeHints = NEUTRAL_HINTS): string {
   // Turnover-prone overrides everything — the loose-handle gambler.
-  if (sub.ball_security < 60) return "Gambler";
+  if (sub.ball_security !== null && sub.ball_security < 60) return "Gambler";
 
   // Rank only the IDENTITY facets. Decision-making and activity top out just for
   // avoiding mistakes / touching the ball, so they'd drown out what a player
@@ -156,7 +164,7 @@ export function playerArchetype(sub: SubScores, hints: ArchetypeHints = NEUTRAL_
 
   const goodD = sub.defense !== null && sub.defense >= 72;
   const scoresToo = sub.scoring !== null && sub.scoring >= 70;
-  const playmakesToo = sub.playmaking >= 70;
+  const playmakesToo = sub.playmaking !== null && sub.playmaking >= 70;
 
   switch (top.k) {
     case "scoring":
@@ -207,11 +215,27 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
   const activeOff = stats.filter((s) => s.off_ball === "active").length;
   const passiveOff = stats.filter((s) => s.off_ball === "passive").length;
 
-  // Raw rates (before confidence). Form nudges the raw where it applies.
-  const scoringRaw = shots === 0 ? null : 40 + 55 * (made / shots);
-  const ballSecurityRaw = 95 - 150 * (turnovers / n);
-  const playmakingRaw = 45 + 60 * (goodReads / n);
-  const decisionRaw = 95 - 140 * (badDecisions / n);
+  // "On-ball" possessions — where the player actually did something WITH the
+  // ball. Offensive skills are judged over THESE, not diluted by their
+  // defensive possessions, and go null when there aren't enough to judge fairly
+  // (a role player who barely handled it isn't graded as a bad ball-handler).
+  const onBall = stats.filter(
+    (s) =>
+      s.shot !== "none" ||
+      s.turnover ||
+      s.good_reads > 0 ||
+      s.bad_decisions > 0 ||
+      s.handle != null, // recorded dribble form = they were handling the ball
+  ).length;
+  const hasBallRole = onBall >= 2;
+
+  // Raw rates (before confidence). Form nudges the raw where it applies. A facet
+  // is null when the film gave no chance to show it — the overall reweights.
+  // One attempt can't grade shooting (nor label someone a scorer) — need ≥2.
+  const scoringRaw = shots < 2 ? null : 40 + 55 * (made / shots);
+  const ballSecurityRaw = !hasBallRole ? null : 95 - 150 * (turnovers / onBall);
+  const playmakingRaw = !hasBallRole ? null : 45 + 60 * (goodReads / onBall);
+  const decisionRaw = !hasBallRole ? null : 95 - 140 * (badDecisions / onBall);
   const defenseRaw =
     defensivePoss.length === 0 ? null : 60 + 35 * ((dPos - dNeg) / defensivePoss.length);
   const activityRaw = 30 + 65 * (involved / n);
@@ -223,11 +247,12 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
       scoringRaw === null
         ? null
         : clamp(calibrate(scoringRaw, shots, K_SHOT) + formNudge(cleanShots, flawShots, 6)),
-    ball_security: clamp(
-      calibrate(ballSecurityRaw, n, K_POSS) + formNudge(lowHandle, highHandle, 8),
-    ),
-    playmaking: calibrate(playmakingRaw, n, K_POSS),
-    decision_making: calibrate(decisionRaw, n, K_POSS),
+    ball_security:
+      ballSecurityRaw === null
+        ? null
+        : clamp(calibrate(ballSecurityRaw, onBall, K_POSS) + formNudge(lowHandle, highHandle, 8)),
+    playmaking: playmakingRaw === null ? null : calibrate(playmakingRaw, onBall, K_POSS),
+    decision_making: decisionRaw === null ? null : calibrate(decisionRaw, onBall, K_POSS),
     defense:
       defenseRaw === null
         ? null
@@ -298,6 +323,12 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
     lockdown: lowStance >= 2 && lowStance > highStance,
   };
 
+  // Provisional when there's just too little countable film to trust the number
+  // — a genuinely low-involvement player. Measured purely in real events
+  // (on-ball + defensive possessions): a pure defender with lots of D film is
+  // NOT provisional even though only one facet is gradeable.
+  const provisional = onBall + defensivePoss.length < 4;
+
   return {
     overall,
     subScores,
@@ -305,5 +336,6 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
     possessions: n,
     tier: ratingTier(overall),
     archetype: playerArchetype(subScores, hints),
+    provisional,
   };
 }
