@@ -144,6 +144,12 @@ type VideoPart = {
    * smaller requests, no inline size ceiling.
    */
   remoteUrl?: string;
+  /**
+   * Optional Gemini Files API URI (from uploadGeminiFile). Used for long videos
+   * (full games) that exceed the ~20 MB inline ceiling — Gemini references the
+   * already-uploaded file instead of inlining base64.
+   */
+  fileUri?: string;
 };
 
 function parseDataUrl(videoDataUrl: string, remoteUrl?: string): VideoPart {
@@ -234,6 +240,15 @@ export type ModelConfig = {
    * Override via AI_VIDEO_FPS.
    */
   videoFps?: number;
+  /**
+   * Gemini per-frame detail. Omitted for short clips (full detail). Full-game
+   * tallies pass "MEDIA_RESOLUTION_MEDIUM" to keep a long video affordable and
+   * inside the context window while still reading jerseys.
+   */
+  mediaResolution?: "MEDIA_RESOLUTION_LOW" | "MEDIA_RESOLUTION_MEDIUM";
+  /** Override the request timeout (ms). Full-game tallies need more runway than
+   *  a single clip. Defaults by model class when unset. */
+  requestTimeoutMs?: number;
 };
 
 /**
@@ -251,17 +266,19 @@ async function callModel(
 ): Promise<string> {
   const model = cfg.model ?? DEFAULT_MODEL[cfg.provider];
   // Pro-tier thinking models reason at length before answering; give them
-  // more runway than the snappy flash-class models.
-  const timeoutMs = /pro/i.test(model) ? 150_000 : 90_000;
+  // more runway than the snappy flash-class models. Full-game tallies override.
+  const timeoutMs = cfg.requestTimeoutMs ?? (/pro/i.test(model) ? 150_000 : 90_000);
 
   const doFetch = (): Promise<Response> => {
     if (cfg.provider === "gemini") {
       const parts: Array<Record<string, unknown>> = [{ text: userText }];
       if (video) {
-        parts.push({
-          inline_data: { mime_type: video.mimeType, data: video.base64 },
-          video_metadata: { fps: cfg.videoFps ?? 15 },
-        });
+        // A Files-API upload (long videos / full games) is referenced by URI;
+        // short clips are inlined as base64.
+        const source = video.fileUri
+          ? { file_data: { mime_type: video.mimeType, file_uri: video.fileUri } }
+          : { inline_data: { mime_type: video.mimeType, data: video.base64 } };
+        parts.push({ ...source, video_metadata: { fps: cfg.videoFps ?? 15 } });
       }
       return fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cfg.apiKey}`,
@@ -277,6 +294,7 @@ async function callModel(
               // Thinking models spend output budget on reasoning first; without
               // generous headroom the JSON answer gets truncated mid-object.
               maxOutputTokens: 65536,
+              ...(cfg.mediaResolution ? { mediaResolution: cfg.mediaResolution } : {}),
             },
           }),
           signal: AbortSignal.timeout(timeoutMs),
@@ -862,5 +880,201 @@ Return ONLY valid JSON — no prose, no markdown fences:
     observations: normalizeObservations(obs.observations),
     tracked_player_found: null,
     player_stats: null,
+  };
+}
+
+// ---- Full-game rating pipeline (long video via the Files API) -----------
+
+/**
+ * Upload video bytes to the Gemini Files API and wait until they're processed
+ * (ACTIVE). Long videos (full games) can't be inlined as base64 — Gemini needs
+ * the file uploaded first, then referenced by URI in generateContent.
+ * Gemini-only; other providers use inline/remote-URL transport.
+ */
+export async function uploadGeminiFile(params: {
+  apiKey: string;
+  bytes: Uint8Array;
+  mimeType: string;
+  displayName?: string;
+}): Promise<{ fileUri: string; mimeType: string }> {
+  const { apiKey, bytes, mimeType } = params;
+  const numBytes = bytes.byteLength;
+
+  // 1) Start a resumable upload session.
+  const startRes = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": String(numBytes),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ file: { display_name: params.displayName ?? "game" } }),
+    },
+  );
+  if (!startRes.ok) {
+    throw new Error(
+      `Video upload could not start (${startRes.status}). Check the AI key and try again.`,
+    );
+  }
+  const uploadUrl = startRes.headers.get("X-Goog-Upload-URL");
+  if (!uploadUrl) throw new Error("The video service did not return an upload URL.");
+
+  // 2) Upload the bytes and finalize.
+  const upRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Length": String(numBytes),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    // Uint8Array is a valid fetch body at runtime; the DOM lib types omit it.
+    body: bytes as unknown as BodyInit,
+  });
+  if (!upRes.ok) throw new Error(`Video upload failed (${upRes.status}).`);
+  let file = ((await upRes.json()) as { file?: GeminiFile }).file;
+  if (!file?.name) throw new Error("Video upload returned no file handle.");
+
+  // 3) Poll until the video finishes processing (or fails).
+  const deadline = Date.now() + 180_000;
+  while (file.state === "PROCESSING") {
+    if (Date.now() > deadline) {
+      throw new Error(
+        "The video took too long to process — try a shorter game or lower resolution.",
+      );
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+    const poll = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${apiKey}`,
+    );
+    if (!poll.ok) throw new Error(`Could not check video status (${poll.status}).`);
+    file = (await poll.json()) as GeminiFile;
+  }
+  if (file.state !== "ACTIVE" || !file.uri) {
+    throw new Error(`The video could not be processed (state: ${file.state ?? "unknown"}).`);
+  }
+  return { fileUri: file.uri, mimeType: file.mimeType ?? mimeType };
+}
+
+type GeminiFile = { name?: string; uri?: string; state?: string; mimeType?: string };
+
+export const GAME_SYSTEM = `You are PlayIQ analyzing a FULL basketball game or pickup run to build ONE player's rating. You watch the entire video and TALLY the tracked player's involvement, possession by possession. You are a careful counter, not a storyteller — your output feeds a deterministic rating engine, so the accuracy of the COUNTS matters more than any prose.
+
+For each possession where the tracked player is meaningfully involved on offense (has the ball, shoots, passes, screens, rebounds) OR is defending the ball or their matchup, emit ONE compact stat line. Skip possessions where they are a non-factor.
+
+Locate the tracked player from the description (jersey number + color are the strongest cues; in pickup use clothing + build). Re-identify them EACH possession — do not assume continuity across the game. If you cannot confidently tell it is them in a given possession, do NOT emit a line for it. If nobody matches at all, set tracked_player_found false and return an empty possessions list.
+
+Counting discipline — every basketball term is a CLAIM needing visible evidence:
+- shot: "made" ONLY if you SEE it go in; "missed" if you see it miss or get blocked; otherwise "none".
+- turnover: true ONLY if THEY visibly lose the ball — a pass that no teammate controls (sails away, lands behind them, stolen), a strip, stepping out, an offensive foul. A pass counts as COMPLETED only if a teammate visibly secures it; a ball that arrives at nobody is a turnover on the passer, never a completion.
+- good_reads / bad_decisions (0-3 each): only decisions the video actually shows.
+- defense: their impact on a possession they defend — "positive" (forced miss/tough shot/steal), "negative" (blown by, gave up a clean score), "neutral", or "na" if they weren't defending.
+- FORM buckets, ONLY when clearly visible, else null: shot_mechanics ("clean" vs "flaw" — flaw ONLY for a genuinely harmful mechanic, since good forms vary), handle ("low_controlled" vs "high_exposed"), def_form ("low_slides" vs "upright_crosses"), off_ball ("active" vs "passive").
+
+Jersey COLORS describe clothing, never people: write "#23 in black" or "the defender in white" — NEVER "the black player" (reads as race).
+
+Prefer UNDER-counting to guessing. A game with 12 clearly-seen possessions beats 40 half-guessed ones — when the camera is far, shaky, or the player is off-screen, simply emit fewer lines. Never invent possessions to pad the tally.`;
+
+export function gameUserText(ctx: AnalysisContext): string {
+  const tracked = ctx.trackedPlayer?.trim();
+  return `Analyze this full game / pickup run and tally the tracked player's possessions.
+
+Tracked player: ${tracked || "(not specified — set tracked_player_found false)"}
+${ctx.teamColor ? `Their team wears: ${ctx.teamColor}` : ""}${ctx.notes?.trim() ? `\nUploader note: ${ctx.notes.trim()}` : ""}
+
+Return ONLY valid JSON — no prose, no markdown fences:
+{
+  "tracked_player_found": boolean,
+  "team_in_possession_color": string,
+  "summary": string,            // 3-6 sentences on how the tracked player's game went overall, second person ("You ...")
+  "confidence": "low"|"medium"|"high",
+  "possessions": [              // one per clearly-seen possession the player factored in; UP TO 80, quality over quantity
+    {
+      "t": string,              // approx timestamp in the video, e.g. "4:12"
+      "involved": boolean,
+      "shot": "made"|"missed"|"none",
+      "turnover": boolean,
+      "good_reads": 0|1|2|3,
+      "bad_decisions": 0|1|2|3,
+      "defense": "positive"|"neutral"|"negative"|"na",
+      "shot_mechanics": "clean"|"flaw"|null,
+      "handle": "low_controlled"|"high_exposed"|null,
+      "def_form": "low_slides"|"upright_crosses"|null,
+      "off_ball": "active"|"passive"|null
+    }
+  ]
+}`;
+}
+
+type GameResponse = {
+  tracked_player_found?: boolean;
+  summary?: string;
+  confidence?: string;
+  possessions?: unknown;
+};
+
+export type GameRatingResult = {
+  tracked_player_found: boolean;
+  summary: string;
+  confidence: Confidence;
+  player_stats: PlayerStats[];
+};
+
+/**
+ * Tally a full game into per-possession PlayerStats for the tracked player.
+ * ONE structured pass over the whole video (Gemini Files API), at low fps and
+ * medium resolution — the rating only needs coarse counts, and averaging across
+ * a whole game washes out the odd misread. The returned player_stats array
+ * feeds computeRating exactly like a stack of hand-clipped possessions.
+ */
+export async function runGameRating(params: {
+  fileUri: string;
+  mimeType: string;
+  apiKey: string;
+  provider?: Provider;
+  model?: string;
+  context: AnalysisContext;
+  /** Frame sampling for the long video. Low by default — coarse counts only. */
+  fps?: number;
+  requestTimeoutMs?: number;
+}): Promise<GameRatingResult> {
+  const cfg: ModelConfig = {
+    provider: params.provider ?? "gemini",
+    apiKey: params.apiKey,
+    model: params.model,
+    // Coarser than a clip (15 fps) — a full game only needs shots and turnovers
+    // counted, and low fps keeps a long video fast and affordable. Tunable via
+    // AI_GAME_FPS for users who want to trade cost for finer tallies.
+    videoFps: params.fps ?? 4,
+    mediaResolution: "MEDIA_RESOLUTION_MEDIUM",
+    requestTimeoutMs: params.requestTimeoutMs ?? 240_000,
+  };
+  const video: VideoPart = {
+    dataUrl: "",
+    mimeType: params.mimeType,
+    base64: "",
+    fileUri: params.fileUri,
+  };
+  const raw = await callModelJson<GameResponse>(
+    cfg,
+    GAME_SYSTEM,
+    gameUserText(params.context),
+    video,
+    0.15,
+  );
+  const rows = Array.isArray(raw.possessions) ? raw.possessions : [];
+  const player_stats = rows
+    .slice(0, 80)
+    .map((p) => normalizePlayerStats(p as JudgeResponse["player_stats"]))
+    .filter((s): s is PlayerStats => s !== null);
+  const conf = String(raw.confidence ?? "low") as Confidence;
+  return {
+    tracked_player_found: raw.tracked_player_found !== false,
+    summary: String(raw.summary ?? "").slice(0, 3000),
+    confidence: CONFIDENCES.has(conf) ? conf : "low",
+    player_stats,
   };
 }

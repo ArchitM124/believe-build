@@ -12,7 +12,9 @@ import { computeRating, MIN_POSSESSIONS } from "@/lib/player-rating";
 import type { Json } from "@/integrations/supabase/types";
 
 const InputSchema = z.object({
-  playIds: z.array(z.string().uuid()).min(MIN_POSSESSIONS).max(100),
+  // One full game can supply all the possessions on its own, so a single id is
+  // valid; the real minimum is enforced on the flattened possession pool below.
+  playIds: z.array(z.string().uuid()).min(1).max(100),
 });
 
 export type ScoutingReport = {
@@ -69,26 +71,31 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
       .not("player_stats", "is", null);
     if (error) throw new Error(error.message);
 
+    // A clip carries one PlayerStats; a full game carries an ARRAY of them (one
+    // per tallied possession). Flatten both into a single pool of possessions.
+    type Loose = NonNullable<Parameters<typeof normalizePlayerStats>[0]>;
     const usable = (rows ?? [])
-      .map((r) => ({
-        id: r.id,
-        tracked: r.tracked_player as string,
-        stats: normalizePlayerStats(
-          r.player_stats as NonNullable<Parameters<typeof normalizePlayerStats>[0]>,
-        ),
-      }))
-      .filter((r): r is typeof r & { stats: PlayerStats } => r.stats !== null);
+      .map((r) => {
+        const raw = r.player_stats;
+        const list = Array.isArray(raw) ? raw : [raw];
+        const stats = list
+          .map((s) => normalizePlayerStats(s as Loose))
+          .filter((s): s is PlayerStats => s !== null);
+        return { id: r.id, tracked: r.tracked_player as string, stats };
+      })
+      .filter((r) => r.stats.length > 0);
 
-    if (usable.length < MIN_POSSESSIONS) {
+    const pool = usable.flatMap((r) => r.stats);
+    if (pool.length < MIN_POSSESSIONS) {
       throw new Error(
-        `Need at least ${MIN_POSSESSIONS} analyzed possessions with a focused player (found ${usable.length}). Upload clips with "Focus on one player" filled in.`,
+        `Need at least ${MIN_POSSESSIONS} analyzed possessions with a focused player (found ${pool.length}). Upload a full game, or clips with "Focus on one player" filled in.`,
       );
     }
 
-    const rating = computeRating(usable.map((r) => r.stats));
-    // The most common description among the selected clips names the player.
+    const rating = computeRating(pool);
+    // The most common description across the selected film names the player.
     const counts = new Map<string, number>();
-    for (const r of usable) counts.set(r.tracked, (counts.get(r.tracked) ?? 0) + 1);
+    for (const r of usable) counts.set(r.tracked, (counts.get(r.tracked) ?? 0) + r.stats.length);
     const trackedPlayer = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
 
     const config = resolveModelConfig(process.env);

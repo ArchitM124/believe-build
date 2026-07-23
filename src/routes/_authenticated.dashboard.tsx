@@ -307,11 +307,18 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
                 : "Untitled possession"),
         ),
         notes: (fd.get("notes") as string) || null,
-        team_color: kind === "possession" ? (fd.get("team_color") as string)?.trim() || null : null,
+        team_color:
+          kind === "possession" || kind === "game"
+            ? (fd.get("team_color") as string)?.trim() || null
+            : null,
         attack_direction:
           kind === "possession" ? (fd.get("attack_direction") as string) || "unclear" : null,
+        // Games need the tracked player too — the whole-game tally is built for
+        // whoever the uploader says they are.
         tracked_player:
-          kind === "possession" ? (fd.get("tracked_player") as string)?.trim() || null : null,
+          kind === "possession" || kind === "game"
+            ? (fd.get("tracked_player") as string)?.trim() || null
+            : null,
         declared_outcome:
           kind === "possession" && ((fd.get("declared_outcome") as string) || "unsure") !== "unsure"
             ? (fd.get("declared_outcome") as string)
@@ -369,27 +376,12 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
     setFile(null);
     setProgress(0);
 
-    if (kind === "game") {
-      // Games are stored, not AI-analyzed (they exceed the inline limit).
-      // They count toward unlocking your overall.
-      await supabase
-        .from("plays")
-        .update({
-          status: "ready",
-          what_happened:
-            "Full game saved. Whole-game AI breakdown is coming soon — clip your key possessions from this game and upload them as clips for analysis.",
-        })
-        .eq("id", play.id);
-      toast.success("Game saved — it counts toward unlocking your overall");
-      onDone();
-      navigate({ to: "/possessions/$id", params: { id: play.id } });
-      return;
-    }
-
     toast.success(
       kind === "jumpshot"
         ? "Uploaded — checking your mechanics"
-        : "Uploaded — the AI is breaking it down",
+        : kind === "game"
+          ? "Uploaded — the AI is watching your game (this can take a few minutes)"
+          : "Uploaded — the AI is breaking it down",
     );
     navigate({ to: "/possessions/$id", params: { id: play.id } });
 
@@ -503,18 +495,41 @@ function UploadDialog({ onDone }: { onDone: () => void }) {
               />
             </div>
             {kind === "game" && (
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Game type</Label>
-                <Select name="game_type" defaultValue="pickup">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pickup">Pickup game</SelectItem>
-                    <SelectItem value="organized">Actual game (organized)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <Label>Game type</Label>
+                  <Select name="game_type" defaultValue="pickup">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pickup">Pickup game</SelectItem>
+                      <SelectItem value="organized">Actual game (organized)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="game_team_color">Your jersey color</Label>
+                  <Input
+                    id="game_team_color"
+                    name="team_color"
+                    placeholder="e.g. white, black, red"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="game_tracked_player">Which player are you?</Label>
+                  <Input
+                    id="game_tracked_player"
+                    name="tracked_player"
+                    placeholder="Jersey: 'black #23' · Pickup: 'gray hoodie, tall, starts left'"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The AI watches the whole game and tallies <strong>your</strong> possessions to
+                    build your rating — jersey number and color are best; for pickup describe your
+                    clothing and build. Leave empty to just save the game without a rating.
+                  </p>
+                </div>
+              </>
             )}
             {kind === "possession" && (
               <>

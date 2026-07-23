@@ -24,6 +24,8 @@ type TrackedPlay = {
   tracked_player: string | null;
   outcome: string;
   created_at: string;
+  kind: string;
+  poss: number; // how many possessions this row contributes (a game = many)
 };
 
 type RatingRow = {
@@ -66,13 +68,21 @@ function RatingPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("plays")
-        .select("id,title,tracked_player,outcome,created_at")
+        .select("id,title,tracked_player,outcome,created_at,kind,player_stats")
         .eq("status", "ready")
         .not("tracked_player", "is", null)
         .not("player_stats", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as TrackedPlay[];
+      return (data ?? []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        tracked_player: p.tracked_player,
+        outcome: p.outcome,
+        created_at: p.created_at,
+        kind: p.kind,
+        poss: Array.isArray(p.player_stats) ? p.player_stats.length : 1,
+      })) as TrackedPlay[];
     },
   });
 
@@ -106,9 +116,11 @@ function RatingPage() {
     const key = p.tracked_player ?? "";
     groups.set(key, [...(groups.get(key) ?? []), p.id]);
   }
-  const distinctSelected = new Set(
-    (plays ?? []).filter((p) => selected.has(p.id)).map((p) => p.tracked_player),
-  );
+  const selectedList = (plays ?? []).filter((p) => selected.has(p.id));
+  const distinctSelected = new Set(selectedList.map((p) => p.tracked_player));
+  // A game contributes many possessions, so the unlock threshold is measured in
+  // possessions, not rows — one game can be enough on its own.
+  const selectedPoss = selectedList.reduce((a, p) => a + p.poss, 0);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -197,8 +209,11 @@ function RatingPage() {
                     {p.tracked_player} · {new Date(p.created_at).toLocaleDateString()}
                   </span>
                 </label>
-                <Badge variant="outline" className="text-[10px] uppercase">
-                  {p.outcome.replace("_", " ")}
+                <Badge
+                  variant={p.kind === "game" ? "default" : "outline"}
+                  className="text-[10px] uppercase"
+                >
+                  {p.kind === "game" ? `Game · ${p.poss} poss` : p.outcome.replace("_", " ")}
                 </Badge>
               </li>
             ))}
@@ -214,15 +229,15 @@ function RatingPage() {
 
         <Button
           className="mt-4 gap-2"
-          disabled={busy || selected.size < MIN_POSSESSIONS}
+          disabled={busy || selectedPoss < MIN_POSSESSIONS}
           onClick={generate}
         >
           {busy ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <>
-              <Gauge className="h-4 w-4" /> Generate rating ({selected.size} clip
-              {selected.size === 1 ? "" : "s"})
+              <Gauge className="h-4 w-4" /> Generate rating ({selectedPoss} possession
+              {selectedPoss === 1 ? "" : "s"})
             </>
           )}
         </Button>
