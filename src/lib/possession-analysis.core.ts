@@ -466,7 +466,7 @@ Hard rules:
   · "wide open" / "heavily contested" → state the defender distance you can actually see instead of the judgment
   · court spots (corner, wing, elbow) → only with visible landmarks (arc, paint, baseline); else the general area
   A generic TRUE sentence always beats a specific guess.
-- BODY POSTURE: when clearly visible, record posture facts — defensive stance height (upright vs sitting low), whether the defender slides or crosses feet, passing mechanics (two-hand step-through vs lazy one-hand flick), box-out contact on rebounds, wide vs narrow base. Same claim law: only when clearly visible.
+- BODY POSTURE & FORM: when clearly visible, record form facts — defensive stance height (upright vs sitting low), whether the defender slides or crosses feet, JUMPSHOT MECHANICS (smooth and repeatable vs a GENUINELY HARMFUL flaw like a pronounced thumb-flick, a low set point, or an off-balance base — flag a flaw ONLY when it would actually hurt the shot; good forms vary wildly, so an unusual-but-effective motion is NOT a flaw), how high/exposed the ball-handler dribbles (low and controlled vs high and loose in traffic), passing mechanics (two-hand step-through vs lazy one-hand flick), box-out contact on rebounds, wide vs narrow base, and OFF-BALL movement (cutting, relocating, screening vs standing still or ball-watching). Same claim law: only when clearly visible — never invent form you could not see.
 - PLAY-STOPPAGE SIGNALS: watch for signs the play went DEAD mid-clip — most players simultaneously stopping, relaxing, or reversing direction; defenders no longer contesting; the ball casually retrieved or walked back. Record any such signal as its own observation with a timestamp. A basket scored uncontested AFTER such a signal is likely a dead-ball shot (players often finish anyway after a whistle or out-of-bounds) — note that explicitly rather than reporting it as the possession's result.`;
 
 export function observeUserText(ctx: AnalysisContext): string {
@@ -514,6 +514,10 @@ export type JudgeResponse = {
     good_reads?: unknown;
     bad_decisions?: unknown;
     defense?: unknown;
+    shot_mechanics?: unknown;
+    handle?: unknown;
+    def_form?: unknown;
+    off_ball?: unknown;
   };
 };
 
@@ -528,6 +532,12 @@ export type PlayerStats = {
   good_reads: number; // 0–3
   bad_decisions: number; // 0–3
   defense: "positive" | "neutral" | "negative" | "na";
+  // FORM buckets — optional and null unless the observation log clearly recorded
+  // the fact. Soft, so they only NUDGE the rating (see player-rating.ts).
+  shot_mechanics?: "clean" | "flaw" | null; // "flaw" only for a genuinely harmful mechanic
+  handle?: "low_controlled" | "high_exposed" | null; // dribble height/exposure
+  def_form?: "low_slides" | "upright_crosses" | null; // defensive stance/footwork
+  off_ball?: "active" | "passive" | null; // movement away from the ball
 };
 
 export const JUDGE_SYSTEM = `You are PlayIQ, an elite basketball film-study analyst. You are given a VERIFIED observation log from a single possession. You did NOT watch the video yourself — build your entire analysis STRICTLY from the log.
@@ -609,13 +619,17 @@ Return ONLY valid JSON matching this exact type — no prose, no markdown fences
   "flagged": boolean${
     tracked
       ? `,           // true if this is a strong, clear teaching moment.
-  "player_stats": {            // Count ONLY the tracked player's events in THIS possession, grounded in the log. Be strict: no event in the log = don't count it.
+  "player_stats": {            // Count ONLY the tracked player's events in THIS possession, grounded in the log. Be strict: no event in the log = don't count it. FORM fields must be null unless the log EXPLICITLY recorded that form fact — never guess form.
     "involved": boolean,       // did they meaningfully participate (touch, screen, contest, rotation)?
     "shot": "made"|"missed"|"none",
     "turnover": boolean,       // did THEY commit a turnover?
     "good_reads": 0|1|2|3,     // correct decisions the log supports (right pass, good cut, correct rotation)
     "bad_decisions": 0|1|2|3,  // clear mistakes the log supports (forced shot, blown assignment, lazy pass)
-    "defense": "positive"|"neutral"|"negative"|"na"  // their defensive impact this possession; "na" if their team wasn't defending
+    "defense": "positive"|"neutral"|"negative"|"na",  // their defensive impact this possession; "na" if their team wasn't defending
+    "shot_mechanics": "clean"|"flaw"|null,   // ONLY if they shot AND the log described their form; "flaw" ONLY for a genuinely harmful mechanic the log calls out; else null
+    "handle": "low_controlled"|"high_exposed"|null,  // dribble height/exposure, ONLY if the log recorded it; else null
+    "def_form": "low_slides"|"upright_crosses"|null, // defensive stance/footwork, ONLY if the log recorded it; else null
+    "off_ball": "active"|"passive"|null      // off-ball movement, ONLY if the log recorded it; else null
   }`
       : "           // true if this is a strong, clear teaching moment."
   }
@@ -674,6 +688,18 @@ export function normalizeAnalysis(
 
 const SHOT_VALUES = new Set(["made", "missed", "none"]);
 const DEFENSE_VALUES = new Set(["positive", "neutral", "negative", "na"]);
+const MECH_VALUES = new Set(["clean", "flaw"]);
+const HANDLE_VALUES = new Set(["low_controlled", "high_exposed"]);
+const DEFFORM_VALUES = new Set(["low_slides", "upright_crosses"]);
+const OFFBALL_VALUES = new Set(["active", "passive"]);
+
+/** A loose enum field → the matching value, or null when absent/unrecognized.
+ *  Form buckets default to null so an unobserved fact never fakes a signal. */
+function enumOrNull<T extends string>(raw: unknown, values: Set<string>): T | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  return values.has(s) ? (s as T) : null;
+}
 
 /** Clamp the judge's loose stat block into a typed PlayerStats (or null). */
 export function normalizePlayerStats(raw: JudgeResponse["player_stats"]): PlayerStats | null {
@@ -689,6 +715,10 @@ export function normalizePlayerStats(raw: JudgeResponse["player_stats"]): Player
     good_reads: clampCount(raw.good_reads),
     bad_decisions: clampCount(raw.bad_decisions),
     defense: (DEFENSE_VALUES.has(defense) ? defense : "na") as PlayerStats["defense"],
+    shot_mechanics: enumOrNull<"clean" | "flaw">(raw.shot_mechanics, MECH_VALUES),
+    handle: enumOrNull<"low_controlled" | "high_exposed">(raw.handle, HANDLE_VALUES),
+    def_form: enumOrNull<"low_slides" | "upright_crosses">(raw.def_form, DEFFORM_VALUES),
+    off_ball: enumOrNull<"active" | "passive">(raw.off_ball, OFFBALL_VALUES),
   };
 }
 

@@ -38,6 +38,8 @@ type RatingRow = {
     weaknesses?: string[];
     improve?: string[];
     evidence?: string[];
+    tier?: string;
+    archetype?: string;
   } | null;
   created_at: string;
 };
@@ -263,8 +265,15 @@ function RatingCard({
         <div className="min-w-0">
           <div className="text-xs uppercase tracking-[0.25em] text-primary">Game score</div>
           <h3 className="mt-1 text-xl font-semibold">{r.tracked_player}</h3>
+          {/* Archetype names the shape of the game — safe to show even when the
+              overall is locked, since it doesn't reveal the number. */}
+          {report.archetype && (
+            <Badge className="mt-2" variant="secondary">
+              {report.archetype}
+            </Badge>
+          )}
           {report.headline && (
-            <p className="mt-1 text-sm text-muted-foreground">{report.headline}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{report.headline}</p>
           )}
         </div>
         <div className="text-right">
@@ -276,7 +285,14 @@ function RatingCard({
               </div>
             </div>
           ) : (
-            <div className="text-5xl font-bold tracking-tight text-primary">{r.overall}</div>
+            <>
+              <div className="text-5xl font-bold tracking-tight text-primary">{r.overall}</div>
+              {report.tier && (
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">
+                  {report.tier}
+                </div>
+              )}
+            </>
           )}
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
             {locked ? "overall locked" : "overall"} · {r.possessions_used} possessions

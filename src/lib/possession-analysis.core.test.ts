@@ -8,6 +8,7 @@ import {
   resolveModelConfig,
   observeUserText,
   judgeUserText,
+  OBSERVE_SYSTEM,
 } from "./possession-analysis.core";
 
 const realFetch = globalThis.fetch;
@@ -165,6 +166,17 @@ test("prompts include tracking instructions only when a player is set", () => {
   expect(observeUserText(withPlayer)).toContain("PREPONDERANCE of cues");
   expect(observeUserText(withPlayer)).toContain("what matched and what conflicted");
   expect(judgeUserText(without, {})).not.toContain("PERSONAL COACHING MODE");
+  // The judge's counting schema carries the form buckets only when tracking.
+  expect(judgeUserText(withPlayer, {})).toContain("shot_mechanics");
+  expect(judgeUserText(withPlayer, {})).toContain("off_ball");
+  expect(judgeUserText(without, {})).not.toContain("shot_mechanics");
+});
+
+test("observer watches shooting/handle/off-ball form for the rating engine", () => {
+  expect(OBSERVE_SYSTEM).toContain("BODY POSTURE & FORM");
+  expect(OBSERVE_SYSTEM).toContain("JUMPSHOT MECHANICS");
+  expect(OBSERVE_SYSTEM).toContain("GENUINELY HARMFUL");
+  expect(OBSERVE_SYSTEM).toContain("OFF-BALL movement");
 });
 
 test("normalizePlayerStats clamps and defaults the judge's loose stat block", () => {
@@ -185,6 +197,49 @@ test("normalizePlayerStats clamps and defaults the judge's loose stat block", ()
     good_reads: 3,
     bad_decisions: 0,
     defense: "na",
+    // Form buckets default to null when the model didn't record them.
+    shot_mechanics: null,
+    handle: null,
+    def_form: null,
+    off_ball: null,
+  });
+});
+
+test("normalizePlayerStats keeps valid form buckets and nulls unrecognized ones", () => {
+  const clean = normalizePlayerStats({
+    involved: true,
+    shot: "made",
+    turnover: false,
+    good_reads: 1,
+    bad_decisions: 0,
+    defense: "positive",
+    shot_mechanics: "flaw",
+    handle: "high_exposed",
+    def_form: "low_slides",
+    off_ball: "active",
+  });
+  expect(clean).toMatchObject({
+    shot_mechanics: "flaw",
+    handle: "high_exposed",
+    def_form: "low_slides",
+    off_ball: "active",
+  });
+  // Garbage or absent form values become null, never a fake signal.
+  const garbage = normalizePlayerStats({
+    involved: true,
+    shot: "none",
+    turnover: false,
+    good_reads: 0,
+    bad_decisions: 0,
+    defense: "na",
+    shot_mechanics: "perfect",
+    handle: 5,
+  });
+  expect(garbage).toMatchObject({
+    shot_mechanics: null,
+    handle: null,
+    def_form: null,
+    off_ball: null,
   });
 });
 

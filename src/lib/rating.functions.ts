@@ -22,24 +22,26 @@ export type ScoutingReport = {
   improve: string[];
 };
 
-const REPORT_SYSTEM = `You are PlayIQ's scouting-report writer. You receive FINAL computed ratings and counted evidence from one player's session of film. The numbers are already decided — you NEVER change, re-grade, or second-guess them. Write like a 2K-style scout: direct, specific, zero flattery, zero filler. Every claim must trace to the provided counts/evidence — do not invent events that aren't in the data. If the evidence is thin in an area, say so rather than padding. Jersey colors describe clothing, never people: write "the player in white" or "#23 in black" — NEVER "the white player" or "the black player" (reads as race). ADDRESS THE PLAYER DIRECTLY in second person for strengths, weaknesses, and improve: "You protected the ball — 0 turnovers in 12 possessions", "You need to..." — never "the player" or "they". The headline stays an identity line (no "you").`;
+const REPORT_SYSTEM = `You are PlayIQ's scouting-report writer. You receive FINAL computed ratings and counted evidence from one player's session of film. The numbers, tier, and archetype are already decided — you NEVER change, re-grade, or second-guess them. Write like a 2K-style scout: direct, specific, zero flattery, zero filler. Every claim must trace to the provided counts/evidence — do not invent events that aren't in the data. Form receipts in the evidence (shooting mechanics, dribble exposure, defensive stance, off-ball movement) are great specifics to cite — lean on them, but never beyond what's written. If the evidence is thin in an area, say so rather than padding. Jersey colors describe clothing, never people: write "the player in white" or "#23 in black" — NEVER "the white player" or "the black player" (reads as race). ADDRESS THE PLAYER DIRECTLY in second person for strengths, weaknesses, and improve: "You protected the ball — 0 turnovers in 12 possessions", "You need to..." — never "the player" or "they". The headline stays an identity line (no "you") and should fit the given archetype.`;
 
 function reportUser(params: {
   trackedPlayer: string;
   possessions: number;
   overall: number;
+  tier: string;
+  archetype: string;
   subScores: Record<string, number | null>;
   evidence: string[];
 }): string {
   return `Player: ${params.trackedPlayer}
 Film: ${params.possessions} analyzed possessions
-OVERALL (final): ${params.overall}
+OVERALL (final): ${params.overall} — tier: ${params.tier} — archetype: ${params.archetype}
 Sub-scores (final): ${JSON.stringify(params.subScores)}
 Counted evidence: ${params.evidence.join("; ")}
 
 Return ONLY valid JSON — no prose, no markdown fences:
 {
-  "headline": string,      // one line, <=60 chars, the player's identity on this film (e.g. "High-motor slasher who forces the issue")
+  "headline": string,      // one line, <=60 chars, the player's identity on this film, consistent with the archetype (e.g. "High-motor slasher who forces the issue")
   "strengths": string[],   // 2-3 items, each citing the evidence/counts
   "weaknesses": string[],  // 2-3 items, each citing the evidence/counts
   "improve": string[]      // 2-3 concrete drills/habits that target the weaknesses
@@ -101,6 +103,8 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
           trackedPlayer,
           possessions: rating.possessions,
           overall: rating.overall,
+          tier: rating.tier,
+          archetype: rating.archetype,
           subScores: rating.subScores,
           evidence: rating.evidence,
         }),
@@ -127,7 +131,12 @@ export const generatePlayerRating = createServerFn({ method: "POST" })
         possessions_used: rating.possessions,
         sub_scores: rating.subScores as unknown as Json,
         overall: rating.overall,
-        report: { ...report, evidence: rating.evidence } as unknown as Json,
+        report: {
+          ...report,
+          evidence: rating.evidence,
+          tier: rating.tier,
+          archetype: rating.archetype,
+        } as unknown as Json,
       })
       .select()
       .single();

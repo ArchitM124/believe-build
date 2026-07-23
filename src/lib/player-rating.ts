@@ -6,11 +6,27 @@ import type { PlayerStats } from "./possession-analysis.core";
  * never chooses a number — that's what keeps ratings consistent, honest, and
  * explainable ("Ball security 61 — 4 turnovers in 28 possessions").
  *
+ * Two ideas make the number MEAN something:
+ *
+ * 1. CONFIDENCE / SAMPLE SIZE. Every sub-score starts at a neutral baseline
+ *    (68, "Solid") and only earns its way to the extremes as evidence piles up.
+ *    One made shot can't make you a 95; ten can. A rough 4-possession stretch
+ *    can't crater you; a rough 40-possession game can. This is what stops tiny
+ *    samples from producing wild, meaningless numbers.
+ *
+ * 2. A LADDER. The overall maps to a named tier (Rough → Elite) and the shape
+ *    of the sub-scores names an archetype (Bucket Getter, Floor General, …).
+ *    "74 — Standout · Bucket Getter" tells a story a bare "74" never could.
+ *
+ * FORM nudges, events drive. Grounded form buckets the AI observed (shooting
+ * mechanics, dribble exposure, defensive stance, off-ball movement) adjust the
+ * matching sub-score by a few points — gated by how often they were actually
+ * seen — but the objective events (made/missed, turnover) stay the backbone.
+ *
  * Scale: 25–99 like 2K. A sub-score is null when the film contains no evidence
  * for it (no shots taken → no scoring grade); the overall reweights around it.
- *
- * This is a GAME/SESSION score — a grade of what's on this film, not a claim
- * about overall ability. It stabilizes as more film is rated.
+ * This is a GAME/SESSION score — a grade of what's on this film. It sharpens as
+ * more film is rated (more evidence → more confidence → the number can move).
  */
 
 export type SubScores = {
@@ -27,9 +43,20 @@ export type RatingResult = {
   subScores: SubScores;
   evidence: string[];
   possessions: number;
+  tier: string;
+  archetype: string;
 };
 
 export const MIN_POSSESSIONS = 3;
+
+/** Where an unknown player sits until the film proves otherwise ("Solid"). */
+const BASELINE = 68;
+/** Smoothing constants: evidence / (evidence + K) is how far a score may leave
+ *  the baseline. Bigger K = needs more evidence to reach the extremes. */
+const K_POSS = 6; // per-possession categories (security, playmaking, decisions, activity)
+const K_SHOT = 5; // scoring — measured over shot attempts
+const K_DEF = 5; // defense — measured over defensive possessions
+const K_FORM = 4; // form buckets — how much a form signal is trusted by count
 
 const WEIGHTS: Record<keyof SubScores, number> = {
   scoring: 0.25,
@@ -41,6 +68,71 @@ const WEIGHTS: Record<keyof SubScores, number> = {
 };
 
 const clamp = (v: number, lo = 25, hi = 99) => Math.min(hi, Math.max(lo, Math.round(v)));
+
+/** Pull a raw score toward the baseline based on how much evidence backs it. */
+function calibrate(raw: number, evidence: number, k: number): number {
+  const confidence = evidence / (evidence + k);
+  return clamp(BASELINE + (raw - BASELINE) * confidence);
+}
+
+/** A bounded, count-gated nudge from a form signal in [-1, 1]. Leans light
+ *  until enough observations exist to trust it — "form nudges, events drive". */
+function formNudge(pos: number, neg: number, maxDelta: number): number {
+  const seen = pos + neg;
+  if (seen === 0) return 0;
+  const signal = (pos - neg) / seen; // -1 … 1
+  const trust = seen / (seen + K_FORM);
+  return maxDelta * signal * trust;
+}
+
+const TIERS = [
+  { label: "Rough", hi: 49 },
+  { label: "Developing", hi: 64 },
+  { label: "Solid", hi: 74 },
+  { label: "Standout", hi: 84 },
+  { label: "Dominant", hi: 92 },
+  { label: "Elite", hi: 99 },
+] as const;
+
+/** Map an overall (25–99) to its named tier. */
+export function ratingTier(overall: number): string {
+  return (TIERS.find((t) => overall <= t.hi) ?? TIERS[TIERS.length - 1]).label;
+}
+
+/**
+ * Name the player's archetype from the SHAPE of the sub-scores — pure code, no
+ * AI, so it's free and consistent. These labels are the shareable, braggable
+ * part; rename them here without touching any math.
+ */
+export function playerArchetype(sub: SubScores): string {
+  // Turnover-prone overrides everything — the loose-handle gambler.
+  if (sub.ball_security < 60) return "Gambler";
+
+  // Rank only the IDENTITY facets. Decision-making and activity top out just for
+  // avoiding mistakes / touching the ball, so they'd drown out what a player
+  // actually IS — nobody's archetype is "Involved Guy".
+  const IDENTITY: Array<keyof SubScores> = ["scoring", "playmaking", "defense"];
+  const present = IDENTITY.map((k) => ({ k, v: sub[k] })).filter(
+    (e): e is { k: keyof SubScores; v: number } => e.v !== null,
+  );
+  if (present.length === 0) return "All-Around";
+
+  present.sort((a, b) => b.v - a.v);
+  const spread = present[0].v - present[present.length - 1].v;
+  if (present.length > 1 && spread <= 5) return "All-Around"; // no real separation
+
+  const twoWay = sub.defense !== null && sub.defense >= 72;
+  switch (present[0].k) {
+    case "scoring":
+      return twoWay ? "Two-Way Wing" : "Bucket Getter";
+    case "playmaking":
+      return "Floor General";
+    case "defense":
+      return "Menace";
+    default:
+      return "All-Around";
+  }
+}
 
 export function computeRating(stats: PlayerStats[]): RatingResult {
   const n = stats.length;
@@ -61,20 +153,45 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
   const dNeg = defensivePoss.filter((s) => s.defense === "negative").length;
   const involved = stats.filter((s) => s.involved).length;
 
+  // Form tallies (only possessions where the AI actually recorded the form fact).
+  const cleanShots = stats.filter((s) => s.shot_mechanics === "clean").length;
+  const flawShots = stats.filter((s) => s.shot_mechanics === "flaw").length;
+  const lowHandle = stats.filter((s) => s.handle === "low_controlled").length;
+  const highHandle = stats.filter((s) => s.handle === "high_exposed").length;
+  const lowStance = stats.filter((s) => s.def_form === "low_slides").length;
+  const highStance = stats.filter((s) => s.def_form === "upright_crosses").length;
+  const activeOff = stats.filter((s) => s.off_ball === "active").length;
+  const passiveOff = stats.filter((s) => s.off_ball === "passive").length;
+
+  // Raw rates (before confidence). Form nudges the raw where it applies.
+  const scoringRaw = shots === 0 ? null : 40 + 55 * (made / shots);
+  const ballSecurityRaw = 95 - 150 * (turnovers / n);
+  const playmakingRaw = 45 + 60 * (goodReads / n);
+  const decisionRaw = 95 - 140 * (badDecisions / n);
+  const defenseRaw =
+    defensivePoss.length === 0 ? null : 60 + 35 * ((dPos - dNeg) / defensivePoss.length);
+  const activityRaw = 30 + 65 * (involved / n);
+
+  // Sub-scores: calibrate the raw toward baseline by evidence, then apply the
+  // bounded form nudge on top (so a form misread can't crater a real number).
   const subScores: SubScores = {
-    // 0% shooting → 40, 100% → 95. No shots → no grade.
-    scoring: shots === 0 ? null : clamp(40 + 55 * (made / shots)),
-    // 0 turnovers → 95; one every 5 possessions → 65; heavy → floor.
-    ball_security: clamp(95 - 150 * (turnovers / n)),
-    // Rewards good reads per possession; ~1 per possession → elite.
-    playmaking: clamp(45 + 60 * (goodReads / n)),
-    // Penalizes clear mistakes per possession.
-    decision_making: clamp(95 - 140 * (badDecisions / n)),
-    // Net positive vs negative defensive possessions. No D film → no grade.
+    scoring:
+      scoringRaw === null
+        ? null
+        : clamp(calibrate(scoringRaw, shots, K_SHOT) + formNudge(cleanShots, flawShots, 6)),
+    ball_security: clamp(
+      calibrate(ballSecurityRaw, n, K_POSS) + formNudge(lowHandle, highHandle, 8),
+    ),
+    playmaking: calibrate(playmakingRaw, n, K_POSS),
+    decision_making: calibrate(decisionRaw, n, K_POSS),
     defense:
-      defensivePoss.length === 0 ? null : clamp(60 + 35 * ((dPos - dNeg) / defensivePoss.length)),
-    // How often they meaningfully participate.
-    activity: clamp(30 + 65 * (involved / n)),
+      defenseRaw === null
+        ? null
+        : clamp(
+            calibrate(defenseRaw, defensivePoss.length, K_DEF) +
+              formNudge(lowStance, highStance, 6),
+          ),
+    activity: clamp(calibrate(activityRaw, n, K_POSS) + formNudge(activeOff, passiveOff, 6)),
   };
 
   // Weighted mean over the sub-scores that have evidence.
@@ -98,5 +215,36 @@ export function computeRating(stats: PlayerStats[]): RatingResult {
     `involved in ${involved} of ${n} possessions`,
   ];
 
-  return { overall, subScores, evidence, possessions: n };
+  // Form receipts — the differentiated eye-test detail, only when it was seen.
+  if (flawShots > 0)
+    evidence.push(`shooting form flagged on ${flawShots} of ${cleanShots + flawShots} jumpers`);
+  else if (cleanShots > 0)
+    evidence.push(`clean shooting form (${cleanShots} jumper${cleanShots === 1 ? "" : "s"})`);
+  if (lowHandle + highHandle > 0)
+    evidence.push(
+      highHandle >= lowHandle
+        ? `high, exposed handle on ${highHandle} of ${lowHandle + highHandle} possessions`
+        : `low, controlled handle on ${lowHandle} of ${lowHandle + highHandle} possessions`,
+    );
+  if (lowStance + highStance > 0)
+    evidence.push(
+      lowStance >= highStance
+        ? `sits low and slides on defense (${lowStance} possession${lowStance === 1 ? "" : "s"})`
+        : `upright, crosses feet on defense (${highStance} possession${highStance === 1 ? "" : "s"})`,
+    );
+  if (activeOff + passiveOff > 0)
+    evidence.push(
+      activeOff >= passiveOff
+        ? `active off the ball (${activeOff} possession${activeOff === 1 ? "" : "s"})`
+        : `drifts / ball-watches off the ball (${passiveOff} possession${passiveOff === 1 ? "" : "s"})`,
+    );
+
+  return {
+    overall,
+    subScores,
+    evidence,
+    possessions: n,
+    tier: ratingTier(overall),
+    archetype: playerArchetype(subScores),
+  };
 }
